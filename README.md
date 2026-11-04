@@ -199,6 +199,8 @@ Please read these before drawing conclusions.
 Clone the repository and run on CPU first. Building the data needs no GPU and no PyTorch:
 
 ```bash
+git clone https://github.com/antonio-mastropaolo/qwen-sequential-books
+cd qwen-sequential-books
 python sequential_books.py --dry_run          # builds both books, prints sizes and examples
 ```
 
@@ -272,6 +274,7 @@ If you use this code or these results, please cite:
   title        = {Sequential Books: Learning a Second Book without Forgetting the First in {Qwen2.5-7B}},
   year         = {2026},
   howpublished = {GitHub repository},
+  url          = {https://github.com/antonio-mastropaolo/qwen-sequential-books},
   note         = {Rehearsal with KL to the previous model on rehearsal examples only, for sequential LoRA fine-tuning}
 }
 ```

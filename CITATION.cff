@@ -6,6 +6,8 @@ authors:
   - family-names: Mastropaolo
     given-names: Antonio
     affiliation: "AURA Lab, William & Mary"
+repository-code: "https://github.com/antonio-mastropaolo/qwen-sequential-books"
+url: "https://github.com/antonio-mastropaolo/qwen-sequential-books"
 date-released: 2026-11-04
 license: MIT
 keywords:

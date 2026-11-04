@@ -160,8 +160,11 @@ def train_stage(model, tok, texts, args, tag, rehearsal=None, method="naive", lo
                 if log: log({f"{tag}/{k}": v for k, v in rec.items() if k != "stage"})
     model.eval()
 
-@torch.no_grad()
 def accuracy(model, tok, items, bs=32, max_new=12):
+    with torch.no_grad():
+        return _accuracy(model, tok, items, bs, max_new)
+
+def _accuracy(model, tok, items, bs, max_new):
     model.eval()
     model.config.use_cache = True
     tok.padding_side = "left"

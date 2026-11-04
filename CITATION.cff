@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this code or these results, please cite it as below."
+title: "Sequential Books: Learning a Second Book without Forgetting the First in Qwen2.5-7B"
+type: software
+authors:
+  - family-names: Mastropaolo
+    given-names: Antonio
+    affiliation: "AURA Lab, William & Mary"
+date-released: 2026-11-04
+license: MIT
+keywords:
+  - continual learning
+  - catastrophic forgetting
+  - sequential fine-tuning
+  - LoRA
+  - rehearsal
+  - KL regularization
+  - Qwen2.5-7B

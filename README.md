@@ -10,7 +10,7 @@
 [![PEFT](https://img.shields.io/badge/PEFT-LoRA%20r%3D64-2f4b6e)](https://github.com/huggingface/peft)
 [![License: MIT](https://img.shields.io/badge/license-MIT-5f6b7a)](LICENSE)
 
-<img src="assets/hero.png" alt="Left: book-A accuracy across stages for three methods. Right: book A retained versus book B learned after stage 2; rehearsal + KL sits off the naive-KL trade-off line, near the goal corner" width="100%">
+<img src="assets/hero.png" alt="Learn the second book, keep the first. Main panel: book A retained against book B learned after stage 2, with arrows from the book-A model. Naive fine-tuning lands at A 0.300, B 0.977; KL on new-book tokens at A 0.820, B 0.442; rehearsal + KL at A 0.957, B 0.886, beyond the straight line through the two baselines and near the goal corner. Side panel: forgetting of book A with rehearsal + KL is −0.015 ± 0.017, against 0.642 for naive and 0.122 for KL on new-book tokens, plus book-A accuracy stage by stage." width="100%">
 
 </div>
 
@@ -74,7 +74,8 @@ loss =          CE( book-B statements )             # new knowledge, no constrai
 The KL reference is the book-A model itself, obtained by disabling the stage-2 adapter, so it needs no second
 copy of the weights. `kl_w = 1.0`. **No KL is applied to book-B tokens.**
 
-<p align="center"><img src="assets/method.png" alt="Two-stage pipeline: base model and book A train LoRA A into a frozen book-A model; stage 2 trains a fresh LoRA B on batches of book-B statements (CE) and book-A rehearsal statements (CE + KL to the book-A model), then evaluates" width="100%"></p>
+<p align="center"><img src="assets/method.png" alt="Method. Stage I: the base model and book A train LoRA A, which is merged into a frozen book-A model. Stage II: a fresh LoRA B on top of the book-A model trains on batches drawn to scale, 32 book-B statements with CE only and 13 book-A rehearsal statements with CE plus KL to the book-A model; the KL reference is the same model with LoRA B switched off. Both books are then evaluated on 1,500 held-out questions each." width="100%"></p>
+<p align="center"><sub>Every batch is drawn to scale: 32 book-B statements (sand) and 13 rehearsal statements from book A (blue). Only the blue ones carry a KL term.</sub></p>
 
 ### Methods compared
 
@@ -104,7 +105,7 @@ All three share the same stage-1 model per seed, the same fresh-LoRA setup, lear
 
 ## Results
 
-<p align="center"><img src="assets/accuracy_bars.png" alt="Book A retained and book B learned after stage 2, per method, with per-seed dots and sd" width="85%"></p>
+<p align="center"><img src="assets/accuracy_bars.png" alt="Accuracy after stage 2. Book A retained: rehearsal + KL 0.957, KL on new-book tokens 0.820, naive 0.300, against 0.942 before stage 2. Book B learned: rehearsal + KL 0.886, KL on new-book tokens 0.442, naive 0.977. Bars are means of 3 seeds, rings are seeds, whiskers are ±1 sd." width="85%"></p>
 
 | Method | Seeds | A after stage 1 | A after stage 2 | B after stage 2 | Forgetting of A |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -117,8 +118,8 @@ Mean ± sd over seeds (sample sd). Source: [`results/summary.md`](results/summar
 
 <table>
 <tr>
-<td width="50%"><img src="assets/forgetting.png" alt="Book-A accuracy before and after stage 2 for each method, with forgetting and per-seed dots"></td>
-<td width="50%"><img src="assets/tradeoff.png" alt="Book A retained versus book B learned after stage 2: mean, seeds and sd ellipse per method"></td>
+<td width="50%"><img src="assets/forgetting.png" alt="Forgetting of book A. From 0.942 before stage 2, naive drops to 0.300 (forgetting 0.642 ± 0.034), KL on new-book tokens to 0.820 (0.122 ± 0.021), and rehearsal + KL rises to 0.957 (−0.015 ± 0.017)."></td>
+<td width="50%"><img src="assets/tradeoff.png" alt="Book A retained against book B learned after stage 2, with mean, seeds and ±1 sd per method and arrows from the book-A model. Rehearsal + KL lies beyond the straight line through the two baselines, near the goal corner."></td>
 </tr>
 </table>
 
@@ -134,7 +135,7 @@ book-A model, while book-B tokens get no penalty.
 
 ### Per-seed results
 
-<p align="center"><img src="assets/per_seed.png" alt="One panel per seed: arrows from the book-A model to each method after stage 2, with per-seed values" width="100%"></p>
+<p align="center"><img src="assets/per_seed.png" alt="One panel per seed, book A retained against book B learned, with arrows from that seed's book-A model. In seeds 0, 1 and 2 rehearsal + KL forgets 0.002, −0.015 and −0.033 of book A and learns 0.909, 0.934 and 0.815 of book B." width="100%"></p>
 
 | Method | Seed | A after stage 1 | A after stage 2 | B after stage 2 | Forgetting of A | Stage-2 time (min) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -222,7 +223,7 @@ On one 48 GB GPU (for example an L40S or A6000):
 bash setup.sh                                  # venv in ~/venvs/seqbooks, pinned deps, downloads Qwen2.5-7B (~15 GB)
 . ~/venvs/seqbooks/bin/activate
 bash run_all.sh                                # 3 methods x seeds 0 1 2 -> results/ (JSON per run, CSV, summary)
-python assets/make_figures.py                  # rebuilds every figure in assets/ from results/results.csv
+python assets/make_figures.py                  # rebuilds every figure in assets/ from results/results.csv (byte-identical)
 ```
 
 Useful variations:
@@ -258,6 +259,7 @@ Main flags of `sequential_books.py`: `--model`, `--tiny`, `--methods` (comma lis
 │   └── forgetting.png      # accuracy across stages (from make_report.py)
 ├── assets/
 │   ├── make_figures.py     # builds every README figure from results/results.csv
+│   ├── fonts/              # Inter, Instrument Serif, IBM Plex Mono (SIL OFL), so figures render the same anywhere
 │   ├── hero.png  accuracy_bars.png  forgetting.png  tradeoff.png  per_seed.png
 │   └── method.png  (every figure also as .svg)
 ├── CITATION.cff

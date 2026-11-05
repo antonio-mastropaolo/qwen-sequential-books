@@ -26,7 +26,7 @@ order = [m for m in ["naive", "kl_global", "replay_kl"] if m in set(df.method)]
 g = df.groupby("method")[cols].agg(["mean", "std"]).reindex(order)
 nseed = df.groupby("method").seed.nunique().reindex(order)
 
-font_dir = os.environ.get("FIGURE_FONTS")  # optional dir of static Inter TTFs, as for assets/make_figures.py
+font_dir = os.environ.get("FIGURE_FONTS")  # optional dir of static TTFs, e.g. assets/fonts
 fonts = glob.glob(os.path.join(font_dir, "*.ttf")) if font_dir else []
 if fonts:
     font_manager.fontManager.ttflist = [f for f in font_manager.fontManager.ttflist if f.name != "Inter"]

@@ -10,7 +10,7 @@
 [![PEFT](https://img.shields.io/badge/PEFT-LoRA%20r%3D64-2f4b6e)](https://github.com/huggingface/peft)
 [![License: MIT](https://img.shields.io/badge/license-MIT-5f6b7a)](LICENSE)
 
-<img src="assets/hero.png" alt="Learn the new book, keep the old one. Left: forgetting of book A with rehearsal + KL is −0.015 ± 0.017 over 3 seeds (below zero means book A improved), on one scale with KL on new-book tokens at 0.122 and naive fine-tuning at 0.642. Right: book A retained against book B learned. The base model starts near zero on both books, stage 1 takes it to the book-A model, and stage 2 arrows lead to naive fine-tuning at A 0.300, B 0.977 (learns B, loses A), KL on new-book tokens at A 0.820, B 0.442 (keeps A, stalls B), and rehearsal + KL at A 0.957, B 0.886, beyond the straight line through the two baselines and near the goal corner." width="100%">
+<img src="assets/hero.png" alt="Learn the new book, keep the old one. Left: a three-sentence summary and a table of mean ± sd over 3 seeds: book-A model A 0.942 ± 0.036, B 0.054 ± 0.005; naive fine-tuning A 0.300 ± 0.008, B 0.977 ± 0.017, forgetting 0.642 ± 0.034; KL on new-book tokens A 0.820 ± 0.017, B 0.442 ± 0.024, forgetting 0.122 ± 0.021; rehearsal + KL A 0.957 ± 0.021, B 0.886 ± 0.063, forgetting −0.015 ± 0.017. Right: book A accuracy against book B accuracy on a 10 by 10 grid. A dashed stage-1 line runs from the base model (A 0.003, B 0.004) to the book-A model, and curved arrows lead from there to each method after stage 2: rehearsal + KL at A 0.957, B 0.886 near the top-right corner, KL on new-book tokens at A 0.820, B 0.442, and naive fine-tuning at A 0.300, B 0.977. Translucent halos show ±1 sd." width="100%">
 
 </div>
 
@@ -74,8 +74,8 @@ loss =          CE( book-B statements )             # new knowledge, no constrai
 The KL reference is the book-A model itself, obtained by disabling the stage-2 adapter, so it needs no second
 copy of the weights. `kl_w = 1.0`. **No KL is applied to book-B tokens.**
 
-<p align="center"><img src="assets/method.png" alt="Method in three stages. I: the base model trains LoRA A on book A, which is merged into a frozen book-A model. II: on a light blue panel, a fresh LoRA B on top of the frozen book-A model trains on batches drawn to scale, 32 book-B statements with cross-entropy only and 13 book-A rehearsal statements with cross-entropy plus KL to the book-A model; the KL reference is the same network with LoRA B switched off. III: both books are evaluated on 1,500 held-out questions each with an unseen question template. Below, the stage-2 loss is written out term by term." width="100%"></p>
-<p align="center"><sub>One batch, drawn to scale: 32 book-B statements (sand) train with cross-entropy and nothing else; 13 book-A rehearsal statements (blue) add a KL term to the frozen book-A model. LoRA B is the only part that trains.</sub></p>
+<p align="center"><img src="assets/method.png" alt="Method in three stages. Stage 1: the base model trains LoRA A (r=64) on 6,000 book-A statements for 4 epochs, which is merged into a frozen book-A model. Stage 2: a fresh LoRA B trains on batches drawn to scale, one row per method. Naive fine-tuning: 32 book-B statements with cross-entropy only. KL on new-book tokens: the same 32 book-B statements with cross-entropy plus KL to the book-A model. Rehearsal + KL: 32 book-B statements with cross-entropy only, plus 13 book-A rehearsal statements with cross-entropy plus KL to the book-A model. Stage 3: both books are evaluated on 1,500 held-out questions each with an unseen question template. Below, the rehearsal + KL loss is written out." width="100%"></p>
+<p align="center"><sub>One batch per method, drawn to scale: light blocks are the 32 book-B statements, dark blocks the 13 book-A rehearsal statements. The coloured bracket marks where each method applies KL to the frozen book-A model. LoRA B is the only part that trains.</sub></p>
 
 ### Methods compared
 
@@ -105,7 +105,7 @@ All three share the same stage-1 model per seed, the same fresh-LoRA setup, lear
 
 ## Results
 
-<p align="center"><img src="assets/accuracy_bars.png" alt="Accuracy after stage 2, one row per method. Book A retained: rehearsal + KL 0.957, KL on new-book tokens 0.820, naive 0.300, against 0.942 for the book-A model before stage 2 (dashed). Book B learned: rehearsal + KL 0.886, KL on new-book tokens 0.442, naive 0.977, against 0.054 before stage 2. Bars are means of 3 seeds; ticks under each bar are seeds and the thin line is ±1 sd." width="90%"></p>
+<p align="center"><img src="assets/accuracy_bars.png" alt="Grouped bar chart of accuracy after stage 2, one group per method with a solid book-A bar and a light book-B bar. Naive fine-tuning: A 0.300 ± 0.008, B 0.977 ± 0.017. KL on new-book tokens: A 0.820 ± 0.017, B 0.442 ± 0.024. Rehearsal + KL: A 0.957 ± 0.021, B 0.886 ± 0.063. Short dashes mark the book-A model before stage 2 at A 0.942 and B 0.054. Bars are means of 3 seeds with ±1 sd whiskers." width="85%"></p>
 
 | Method | Seeds | A after stage 1 | A after stage 2 | B after stage 2 | Forgetting of A |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -116,9 +116,9 @@ All three share the same stage-1 model per seed, the same fresh-LoRA setup, lear
 Mean ± sd over seeds (sample sd). Source: [`results/summary.md`](results/summary.md) and
 [`results/results.csv`](results/results.csv).
 
-<p align="center"><img src="assets/forgetting.png" alt="Left: book-A accuracy stage by stage, mean of 3 seeds with a thin line per seed. The base model scores 0.003, the book-A model 0.942, and after stage 2 rehearsal + KL holds 0.957, KL on new-book tokens 0.820 and naive 0.300. Right: forgetting of book A for each seed, with means of −0.015 for rehearsal + KL, 0.122 for KL on new-book tokens and 0.642 for naive fine-tuning." width="100%"></p>
+<p align="center"><img src="assets/forgetting.png" alt="Forest plot of forgetting of book A, with a dashed vertical line at zero separating book A improved (left) from book A forgotten (right). Naive fine-tuning 0.642 ± 0.034, KL on new-book tokens 0.122 ± 0.021, rehearsal + KL −0.015 ± 0.017, each shown as a mean dot with a ±1 sd bar and the three seeds as open circles below." width="85%"></p>
 
-<p align="center"><img src="assets/tradeoff.png" alt="Book A retained against book B learned after stage 2, with each method's mean, its seeds and a ±1 sd ellipse, and arrows from the book-A model. The region below the straight line through the two baselines is shaded as the trade-off of one book for the other; rehearsal + KL at A 0.957, B 0.886 lies beyond it, near the goal corner." width="70%"></p>
+<p align="center"><img src="assets/tradeoff.png" alt="Left: book A accuracy against book B accuracy for all nine runs across their three measured checkpoints (base model, after book A, after book B), with thin per-run paths, method means and ±1 sd halos: rehearsal + KL at A 0.957, B 0.886, KL on new-book tokens at A 0.820, B 0.442, naive fine-tuning at A 0.300, B 0.977. Right: the same runs as slope charts of book A and book B accuracy across the three checkpoints, ending at A 0.957, 0.820, 0.300 and B 0.886, 0.442, 0.977." width="100%"></p>
 
 **Reading the trade-off plot.** The top-right corner is the goal: keep A and learn B. Naive sits at the bottom
 right (learns B, loses A). KL on new-book tokens moves up but also far to the left: protecting A this way costs
@@ -132,7 +132,7 @@ book-A model, while book-B tokens get no penalty.
 
 ### Per-seed results
 
-<p align="center"><img src="assets/per_seed.png" alt="Three panels, one per seed, each plotting book A retained against book B learned with arrows from that seed's book-A model. In seeds 0, 1 and 2 rehearsal + KL forgets 0.002, −0.015 and −0.033 of book A and learns 0.909, 0.934 and 0.815 of book B." width="100%"></p>
+<p align="center"><img src="assets/per_seed.png" alt="Three small planes, one per seed, each plotting book A accuracy against book B accuracy with arrows from that seed's book-A model (A 0.968, 0.957, 0.901). Under each plane, every method's A, B and forgetting for that seed; rehearsal + KL forgets +0.002, −0.015 and −0.033 of book A and learns 0.909, 0.934 and 0.815 of book B." width="100%"></p>
 
 | Method | Seed | A after stage 1 | A after stage 2 | B after stage 2 | Forgetting of A | Stage-2 time (min) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|

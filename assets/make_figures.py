@@ -6,10 +6,15 @@
 
 Figures: hero, method, accuracy_bars, forgetting, tradeoff, per_seed.
 
-Needs numpy, pandas, matplotlib and Pillow. Text is set in Inter, Instrument Serif and IBM Plex
-Mono, loaded from assets/fonts (SIL OFL), so the output does not depend on the fonts installed on
-the machine. Rebuilding with the same CSV and library versions gives byte-identical files: PNGs
-carry no timestamp or software tag, and SVG ids are hashed with a fixed salt.
+Design system (from the redesign brief): opaque white canvas, #E5E7EB grid behind the data, near-black
+#111827 headings and #4B5563 secondary text; one colour per method (naive #D97757 terracotta, KL on
+new-book tokens #5E8B7E sage, rehearsal + KL #4F46E5 indigo) and neutral grey for the book-A model.
+Headlines in Instrument Serif, prose and axes in Inter, every number in IBM Plex Mono. Points are
+labelled directly (no legends); ±1 sd is a translucent halo on the 2D planes and a whisker on 1D plots.
+
+Needs numpy, pandas, matplotlib and Pillow. Fonts load from assets/fonts (SIL OFL), so output does not
+depend on the machine. Rebuilding with the same CSV and library versions gives byte-identical files:
+PNGs carry no timestamp or software tag, and SVG ids are hashed with a fixed salt.
 
 Every number drawn on a results figure is read from the CSV. The method figure only shows the
 training configuration (batch sizes, LoRA rank, question counts) described in the README.
@@ -27,9 +32,9 @@ import matplotlib
 matplotlib.use("Agg")
 logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib import font_manager, patheffects  # noqa: E402
+from matplotlib import font_manager  # noqa: E402
 from matplotlib.colors import to_rgb  # noqa: E402
-from matplotlib.patches import Circle, Ellipse, FancyArrowPatch, FancyBboxPatch, Polygon, Rectangle  # noqa: E402
+from matplotlib.patches import Ellipse, FancyArrowPatch, FancyBboxPatch, Rectangle  # noqa: E402
 from PIL import Image  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,43 +48,44 @@ ap.add_argument("--dpi", type=int, default=200)
 args = ap.parse_args()
 os.makedirs(args.out, exist_ok=True)
 
-# ---------------------------------------------------------------- type and colour
+# ---------------------------------------------------------------- tokens
 
 FONT_DIR = os.path.join(HERE, "fonts")
 for f in sorted(glob.glob(os.path.join(FONT_DIR, "*.ttf"))):
     font_manager.fontManager.addfont(f)
-# if a variable build of one of these families is installed system-wide, ignore it
 font_manager.fontManager.ttflist = [
     f for f in font_manager.fontManager.ttflist
     if f.name not in ("Inter", "Instrument Serif", "IBM Plex Mono") or os.path.dirname(f.fname) == FONT_DIR]
 SANS, SERIF, MONO = "Inter", "Instrument Serif", "IBM Plex Mono"
 
-INK = "#101217"
-BODY = "#3b4049"
-MUTED = "#6c717a"
-FAINT = "#a4a8af"
-HAIR = "#e7e4dd"
-PAPER = "#f6f3ec"      # warm off-white for quiet panels
-ACCENT = "#2236e8"     # the one loud colour: the method that works
-ACCENT_DEEP = "#1424b0"
-NAIVE = "#c9734d"
-KLG = "#7f8a84"
+CANVAS = "#FFFFFF"     # brief says #FAFAFA; pure opaque white keeps GitHub light and dark mode clean
+GRID = "#E5E7EB"
+INK = "#111827"
+BODY = "#4B5563"
+AXIS = "#6B7280"
+ORIGIN = "#9CA3AF"
+ORIGIN_EDGE = "#4B5563"
+NAIVE, KLG, REH = "#D97757", "#5E8B7E", "#4F46E5"
 
-COLOR = {"naive": NAIVE, "kl_global": KLG, "replay_kl": ACCENT}
-DEEP = {"naive": "#a2532f", "kl_global": "#56605a", "replay_kl": ACCENT_DEEP}
+COLOR = {"naive": NAIVE, "kl_global": KLG, "replay_kl": REH}
 METHODS = ["naive", "kl_global", "replay_kl"]
 NAME = {"naive": "Naive fine-tuning", "kl_global": "KL on new-book tokens", "replay_kl": "Rehearsal + KL"}
-SHORT = {"naive": "Naive", "kl_global": "KL on B tokens", "replay_kl": "Rehearsal + KL"}
+
+# type scale, in points at 200 dpi (the brief's px sizes on a 3200 px canvas)
+PX = 72 / 200
+T_HERO, T_PROSE, T_AXIS, T_MONO = 110 * PX, 44 * PX, 32 * PX, 28 * PX
+T_TITLE = 30            # headline on the secondary figures
+T_LABEL = 14            # method names on the planes
 
 plt.rcParams.update({
-    "font.family": SANS, "font.size": 11, "text.color": INK,
-    "axes.labelcolor": BODY, "axes.edgecolor": HAIR, "axes.linewidth": 1.0,
+    "font.family": SANS, "font.size": T_AXIS, "text.color": INK,
+    "axes.labelcolor": AXIS, "axes.edgecolor": GRID, "axes.linewidth": 1.0,
     "axes.spines.top": False, "axes.spines.right": False,
-    "xtick.color": MUTED, "ytick.color": MUTED, "xtick.major.size": 0, "ytick.major.size": 0,
-    "xtick.major.pad": 8, "ytick.major.pad": 8,
-    "figure.facecolor": "white", "savefig.facecolor": "white", "axes.facecolor": "none",
+    "xtick.color": AXIS, "ytick.color": AXIS, "xtick.major.size": 0, "ytick.major.size": 0,
+    "xtick.major.pad": 10, "ytick.major.pad": 10,
+    "figure.facecolor": CANVAS, "savefig.facecolor": CANVAS, "axes.facecolor": "none",
     "svg.fonttype": "path", "svg.hashsalt": "sequential-books", "axes.unicode_minus": True,
-    "path.simplify": False, "image.composite_image": True,
+    "path.simplify": False,
 })
 
 # ---------------------------------------------------------------- data
@@ -88,13 +94,13 @@ df = pd.read_csv(args.csv)
 df = df[~df.smoke_test.astype(str).str.lower().eq("true")]
 ORDER = [m for m in METHODS if m in set(df.method)]
 SEEDS = sorted(df.seed.unique())
-COLS = ["after_A_A", "after_A_B", "after_B_A", "after_B_B", "forgetting_A", "stage2_sec"]
+COLS = ["base_A", "base_B", "after_A_A", "after_A_B", "after_B_A", "after_B_B", "forgetting_A"]
 stats = df.groupby("method")[COLS].agg(["mean", "std"]).reindex(ORDER)  # sample sd, as in summary.md
 stage1 = df.drop_duplicates("seed").set_index("seed").sort_index()
 MODEL = df.model.iloc[0].split("/")[-1]
 BASE_A, BASE_B = df.base_A.mean(), df.base_B.mean()
 START_A, START_B = stage1.after_A_A.mean(), stage1.after_A_B.mean()
-START_A_SD = stage1.after_A_A.std()
+START_A_SD, START_B_SD = stage1.after_A_A.std(), stage1.after_A_B.std()
 
 
 def mu(m, c):
@@ -105,8 +111,8 @@ def sd(m, c):
     return stats.loc[m, (c, "std")]
 
 
-def runs_of(m):
-    return df[df.method == m].set_index("seed").sort_index()
+def run(m, seed):
+    return df[(df.method == m) & (df.seed == seed)].iloc[0]
 
 
 def num(v, nd=3, sign=False):
@@ -114,19 +120,18 @@ def num(v, nd=3, sign=False):
     return s.replace("-", "\u2212")
 
 
+def pm(m, c):
+    return f"{num(mu(m, c))}\u00b1{num(sd(m, c))}"
+
+
 def tint(color, amount):
-    """Blend a colour towards white: 0 keeps it, 1 is white."""
     return tuple(c + (1 - c) * amount for c in to_rgb(color))
-
-
-def frac_ticks(ts):
-    return ["0" if t == 0 else "1" if t == 1 else f"{t:.2f}"[1:] for t in ts]
 
 
 # ---------------------------------------------------------------- page helpers
 
 class Sheet:
-    """A figure laid out in inches from the top-left corner, like a printed page."""
+    """A figure laid out in inches from the top-left corner."""
 
     def __init__(self, w, h):
         self.w, self.h = w, h
@@ -140,7 +145,7 @@ class Sheet:
     def axes(self, x, y, w, h, **kw):
         return self.fig.add_axes([x / self.w, 1 - (y + h) / self.h, w / self.w, h / self.h], **kw)
 
-    def text(self, x, y, s, size=11, color=INK, family=SANS, weight="regular", style="normal",
+    def text(self, x, y, s, size=T_PROSE, color=INK, family=SANS, weight="regular", style="normal",
              ha="left", va="baseline", **kw):
         return self.page.text(x, y, s, fontsize=size, color=color, family=family, fontweight=weight,
                               fontstyle=style, ha=ha, va=va, **kw)
@@ -148,32 +153,46 @@ class Sheet:
     def width(self, t):
         return t.get_window_extent(self.fig.canvas.get_renderer()).width / self.fig.dpi
 
+    def measure(self, s, **kw):
+        t = self.text(0, 0, s, **kw)
+        w = self.width(t)
+        t.remove()
+        return w
+
     def runs(self, x, y, parts, **common):
-        """Consecutive text runs in different styles on one baseline. Returns the end x."""
         for s, kw in parts:
             x += self.width(self.text(x, y, s, **{**common, **kw}))
         return x
 
-    def rule(self, x0, x1, y, color=HAIR, lw=1.0, **kw):
+    def para(self, x, y, s, width, size=T_PROSE, lh=1.4, **kw):
+        """Wrap prose to a measured width. Returns the baseline y after the last line."""
+        words, line, lines = s.split(), "", []
+        for w in words:
+            trial = (line + " " + w).strip()
+            if line and self.measure(trial, size=size, **kw) > width:
+                lines.append(line)
+                line = w
+            else:
+                line = trial
+        lines.append(line)
+        step = size * lh / 72
+        for i, ln in enumerate(lines):
+            self.text(x, y + i * step, ln, size=size, **kw)
+        return y + (len(lines) - 1) * step
+
+    def rule(self, x0, x1, y, color=GRID, lw=1.0, **kw):
         self.page.plot([x0, x1], [y, y], color=color, lw=lw, solid_capstyle="butt", **kw)
 
-    def vrule(self, x, y0, y1, color=HAIR, lw=1.0, **kw):
+    def vrule(self, x, y0, y1, color=GRID, lw=1.0, **kw):
         self.page.plot([x, x], [y0, y1], color=color, lw=lw, solid_capstyle="butt", **kw)
 
-    def box(self, x, y, w, h, fc, ec="none", lw=1.0, r=0.12, z=0, **kw):
+    def box(self, x, y, w, h, fc, ec="none", lw=1.0, r=0.08, z=0):
         p = FancyBboxPatch((x, y), w, h, boxstyle=f"round,pad=0,rounding_size={r}", fc=fc, ec=ec,
-                           lw=lw, zorder=z, **kw)
+                           lw=lw, zorder=z)
         self.page.add_patch(p)
         return p
 
-    def eyebrow(self, x, y, s, color=MUTED, size=9, square=None, ha="left"):
-        if square:
-            self.page.add_patch(Rectangle((x, y - 0.1), 0.1, 0.1, fc=square, ec="none"))
-            x += 0.2
-        return self.text(x, y, s.upper(), size=size, color=color, family=MONO, weight="medium", ha=ha)
-
     def save(self, name):
-        """PNG (opaque RGB, no metadata) and SVG (no date), both reproducible byte for byte."""
         buf = io.BytesIO()
         self.fig.savefig(buf, format="png", dpi=args.dpi, metadata={"Software": None})
         Image.open(buf).convert("RGB").save(os.path.join(args.out, name + ".png"), optimize=True)
@@ -183,639 +202,479 @@ class Sheet:
         print("wrote", os.path.join(args.out, name + ".png"))
 
 
-def header(S, eyebrow, title, deck, L, y=0.82, size=40, width=None):
-    """Mono eyebrow, a serif headline in two voices, one line or two of plain deck text."""
-    S.eyebrow(L, y, eyebrow, square=ACCENT)
-    S.runs(L, y + 0.86, [(title[0], {}), (title[1], {"color": ACCENT, "style": "italic"})],
-           size=size, family=SERIF)
-    for i, line in enumerate(deck):
-        S.text(L, y + 1.36 + i * 0.27, line, size=12.5, color=BODY)
+def header(S, title, deck, L, width, y=1.0):
+    S.text(L, y, title, size=T_TITLE, family=SERIF)
+    return S.para(L, y + 0.5, deck, width, size=T_PROSE * 0.8, color=BODY)
 
 
-def footer(S, y, L, R, extra="", stacked=False):
-    S.rule(L, R, y - 0.28 - (0.24 if stacked else 0))
-    if stacked:
-        y -= 0.24
-    S.runs(L, y, [("DATA  ", {"color": FAINT}), ("results/results.csv", {"color": BODY}),
-                  (f"   ·   {MODEL}   ·   seeds {', '.join(str(s) for s in SEEDS)}{extra}", {})],
-           size=8.6, family=MONO, color=MUTED)
-    S.text(L if stacked else R, y + (0.24 if stacked else 0), "github.com/antonio-mastropaolo/qwen-sequential-books",
-           size=8.6, family=MONO, color=MUTED, ha="left" if stacked else "right")
+def footer(S, L, R, y, note="mean \u00b1 1 sd over seeds"):
+    S.rule(L, R, y - 0.3)
+    S.runs(L, y, [("DATA  ", {"color": ORIGIN}), ("results/results.csv", {"color": BODY}),
+                  (f"   \u00b7   {MODEL}   \u00b7   seeds {', '.join(str(s) for s in SEEDS)}   \u00b7   {note}", {})],
+           size=T_MONO * 0.85, family=MONO, color=AXIS)
+    S.text(R, y, "github.com/antonio-mastropaolo/qwen-sequential-books", size=T_MONO * 0.85, family=MONO,
+           color=AXIS, ha="right")
 
 
-def arrow(ax, a, b, color=INK, lw=1.3, rad=0.0, head=(4, 7), shrink=(0, 0), ls="-", z=5, alpha=1):
+def bezier(ax, a, b, color, rad, lw=6 * PX, alpha=0.6, shrink=(9, 13), head=1.0, z=4, ls="-"):
+    """Smooth quadratic Bezier arrow (arc3) at 60 % opacity, as the brief asks."""
     p = FancyArrowPatch(a, b, connectionstyle=f"arc3,rad={rad}",
-                        arrowstyle=f"-|>,head_length={head[0] / 10},head_width={head[1] / 20}",
-                        color=color, lw=lw, ls=ls, shrinkA=shrink[0], shrinkB=shrink[1], zorder=z,
-                        alpha=alpha, capstyle="round", joinstyle="round", mutation_scale=10)
+                        arrowstyle=f"-|>,head_length={0.75 * head},head_width={0.42 * head}",
+                        color=color, lw=lw, alpha=alpha, shrinkA=shrink[0], shrinkB=shrink[1], zorder=z,
+                        capstyle="round", joinstyle="round", mutation_scale=12, ls=ls)
     ax.add_patch(p)
     return p
 
 
-def quiet_axes(ax, xlim, ylim, xticks, yticks, size=9.5, grid=True, xfmt=None, yfmt=None):
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
-    ax.set_xticks(xticks)
-    ax.set_yticks(yticks)
-    ax.set_xticklabels(xfmt or frac_ticks(xticks), family=MONO, fontsize=size)
-    ax.set_yticklabels(yfmt or frac_ticks(yticks), family=MONO, fontsize=size)
+def plane_axes(ax, size=T_AXIS, step=0.1, label_every=0.2, xt="BOOK B ACCURACY  \u2192  LEARNED",
+               yt="BOOK A ACCURACY  \u2192  RETAINED", lo=-0.03, hi=1.03, titles=True):
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
+    grid = np.round(np.arange(0, 1 + 1e-9, step), 3)
+    for t in grid:
+        ax.axvline(t, color=GRID, lw=1.0, zorder=0)
+        ax.axhline(t, color=GRID, lw=1.0, zorder=0)
+    ticks = np.round(np.arange(0, 1 + 1e-9, label_every), 3)
+    lab = [f"{t:.1f}" for t in ticks]
+    ax.set_xticks(ticks, lab, family=SANS, fontweight="medium", fontsize=size * 0.85, color=AXIS)
+    ax.set_yticks(ticks, lab, family=SANS, fontweight="medium", fontsize=size * 0.85, color=AXIS)
     for s in ax.spines.values():
         s.set_visible(False)
-    if grid:
-        for t in xticks:
-            ax.axvline(t, color=HAIR, lw=0.9, zorder=0)
-        for t in yticks:
-            ax.axhline(t, color=HAIR, lw=0.9, zorder=0)
+    if titles:
+        ax.set_xlabel(xt, family=SANS, fontweight="medium", fontsize=size, color=AXIS, labelpad=12)
+        ax.set_ylabel(yt, family=SANS, fontweight="medium", fontsize=size, color=AXIS, labelpad=12)
 
 
-def radial_wash(ax, center, radius, color, strength, xlim, ylim, z=0, clip=None):
-    xs, ys = np.linspace(*xlim, 300), np.linspace(*ylim, 300)
-    X, Y = np.meshgrid(xs, ys)
-    a = strength * np.clip(1 - np.hypot(X - center[0], Y - center[1]) / radius, 0, 1) ** 2
-    img = np.zeros(X.shape + (4,))
-    img[..., :3] = to_rgb(color)
-    img[..., 3] = a
-    im = ax.imshow(img, extent=(*xlim, *ylim), origin="lower", aspect="auto", zorder=z,
-                   interpolation="bilinear")
-    if clip is not None:
-        im.set_clip_path(clip)
-    return im
+def point(ax, b, a, color, s=150, edge="white", z=8, lw=2.0):
+    ax.scatter([b], [a], s=s, color=color, edgecolor=edge, linewidth=lw, zorder=z)
 
 
-HALO = [patheffects.withStroke(linewidth=4, foreground="white")]
+def halo(ax, b, a, sb, sa, color, alpha=0.22, z=6):
+    ax.add_patch(Ellipse((b, a), 2 * sb, 2 * sa, fc=color, ec="none", alpha=alpha, zorder=z))
+    ax.add_patch(Ellipse((b, a), 2 * sb, 2 * sa, fc="none", ec=color, lw=1.0, alpha=0.45, zorder=z))
 
 
-# ---------------------------------------------------------------- the trade-off plane
-
-def plane_points(seed=None):
-    """(B learned, A retained) per method after stage 2: mean, sd and the seeds; or one seed."""
-    pts = {}
-    for m in ORDER:
-        r = runs_of(m)
-        if seed is None:
-            pts[m] = dict(x=mu(m, "after_B_B"), y=mu(m, "after_B_A"), sx=sd(m, "after_B_B"),
-                          sy=sd(m, "after_B_A"), xs=r.after_B_B.values, ys=r.after_B_A.values)
-        else:
-            pts[m] = dict(x=r.after_B_B[seed], y=r.after_B_A[seed], sx=0, sy=0, xs=[], ys=[])
-    if seed is None:
-        start = (START_B, START_A)
-    else:
-        start = (stage1.after_A_B[seed], stage1.after_A_A[seed])
-    return pts, start
+def tag(ax, b, a, name, coords, color, ha="left", va="top", size=T_LABEL, mono=T_MONO, dx=0, dy=0):
+    """Direct label: method name (Inter SemiBold) over 'A: 0.xxx  B: 0.xxx' (Plex Mono)."""
+    off = 1.55 * mono
+    y0, y1 = (0, -off) if va == "top" else (off, 0)
+    kw = dict(xycoords="data", textcoords="offset points", ha=ha, va="baseline", zorder=12, color=color)
+    ax.annotate(name, (b, a), xytext=(dx, dy + y0 - (size if va == "top" else 0)), family=SANS,
+                fontweight="semibold", fontsize=size, **kw)
+    ax.annotate(coords, (b, a), xytext=(dx, dy + y1 - (size if va == "top" else 0)), family=MONO,
+                fontsize=mono, **kw)
 
 
-def tradeoff_line(pts):
-    (x0, y0), (x1, y1) = (pts["naive"]["x"], pts["naive"]["y"]), (pts["kl_global"]["x"], pts["kl_global"]["y"])
-    k = (y1 - y0) / (x1 - x0)
-    return lambda x: y0 + k * (x - x0)
+def coords(a, b):
+    return f"A: {num(a)}  B: {num(b)}"
 
 
-def plane(ax, pts, start, base=None, s=1.0, tick=9.5, detail=True):
-    """Book A retained (y) against book B learned (x). The region the two baselines trade along is
-    shaded; the goal is the top-right corner."""
-    xlim, ylim = (-0.035, 1.075), (-0.035, 1.075)
-    ts = [0, 0.25, 0.5, 0.75, 1]
-    quiet_axes(ax, xlim, ylim, ts, ts, size=tick)
-    line = tradeoff_line(pts)
-
-    # below the straight line through the two baselines: what trading one book for the other buys
-    xs = np.array([xlim[0], xlim[1]])
-    under = Polygon([(xlim[0], ylim[0]), (xlim[0], line(xlim[0])), (xlim[1], line(xlim[1])),
-                     (xlim[1], ylim[0])], closed=True, fc=PAPER, ec="none", zorder=0.2)
-    ax.add_patch(under)
-    for t in ts:  # grid on top of the paper tint, so it reads as one surface
-        ax.plot([t, t], ylim, color=HAIR, lw=0.9, zorder=0.3)
-        ax.plot(xlim, [t, t], color=HAIR, lw=0.9, zorder=0.3)
-    ax.plot(xs, line(xs), color=FAINT, lw=1.1 * s, ls=(0, (2.5, 3)), zorder=1, solid_capstyle="butt")
-
-    # a soft wash around the goal corner, clipped to the region beyond the line
-    beyond = Polygon([(xlim[0], ylim[1]), (xlim[0], line(xlim[0])), (xlim[1], line(xlim[1])),
-                      (xlim[1], ylim[1])], closed=True, fc="none", ec="none", transform=ax.transData)
-    ax.add_patch(beyond)
-    radial_wash(ax, (1.0, 1.0), 0.95, ACCENT, 0.13, xlim, ylim, z=0.4, clip=beyond)
-
-    # goal
-    gx, gy = 1.0, 1.0
-    ax.plot([gx - 0.035, gx + 0.035], [gy, gy], color=INK, lw=0.9 * s, zorder=6)
-    ax.plot([gx, gx], [gy - 0.035, gy + 0.035], color=INK, lw=0.9 * s, zorder=6)
-    ax.scatter([gx], [gy], s=90 * s ** 2, fc="white", ec=INK, lw=0.9 * s, zorder=7)
-
-    # stage 1: from the base model, which knows neither book, to the book-A model
-    sx, sy = start
-    if base is not None:
-        bx, by = base
-        arrow(ax, (bx, by), (sx, sy), color=INK, lw=1.0 * s, ls=(0, (1.5, 2.5)), head=(3.5 * s, 6 * s),
-              shrink=(5 * s, 11 * s), z=2, alpha=0.7)
-        ax.scatter([bx], [by], s=45 * s ** 2, fc="white", ec=INK, lw=1.1 * s, zorder=8)
-
-    # stage 2: every method starts from the book-A model
-    for m, rad in (("naive", 0.2), ("kl_global", 0.14), ("replay_kl", 0.04)):
-        p = pts[m]
-        b = m == "replay_kl"
-        arrow(ax, (sx, sy), (p["x"], p["y"]), color=COLOR[m], lw=(2.8 if b else 1.4) * s, rad=rad,
-              head=(8 * s, 13 * s) if b else (4.5 * s, 7 * s), shrink=(7 * s, 9 * s), z=4.8,
-              alpha=1 if b else 0.85)
-    ax.scatter([sx], [sy], s=150 * s ** 2, fc="white", ec=INK, lw=1.4 * s, zorder=8)
-    ax.scatter([sx], [sy], s=22 * s ** 2, fc=INK, ec="none", zorder=9)
-
-    for m in ORDER:
-        p, c = pts[m], COLOR[m]
-        big = m == "replay_kl"
-        if detail and len(p["xs"]):
-            # the ±1 sd box as a soft ellipse, the seeds as rings
-            ax.add_patch(Ellipse((p["x"], p["y"]), 2 * max(p["sx"], 0.012), 2 * max(p["sy"], 0.012),
-                                 fc=tint(c, 0.8 if big else 0.85), ec="none", zorder=4.5))
-            ax.scatter(p["xs"], p["ys"], s=(30 if big else 22) * s ** 2, fc="white", ec=c, lw=1.2 * s,
-                       zorder=5)
-        ax.scatter([p["x"]], [p["y"]], s=(150 if big else 70) * s ** 2, fc=c, ec="white",
-                   lw=1.8 * s, zorder=6)
-    return line
-
-
-def plane_labels(ax, pts, start, size=12.5, start_note="book-A model", notes=True, compact=False):
-    """Direct labels below and left of each mean: name, its two numbers, and a one-line reading."""
-    note = {"naive": "learns B, loses A", "kl_global": "keeps A, stalls B",
-            "replay_kl": "beyond the trade-off line"}
-    gap = size * 1.25
-    for m in ORDER:
-        p = pts[m]
-        big = m == "replay_kl"
-        x0 = -{"naive": 0.9, "kl_global": 1.5, "replay_kl": 0.9}[m] * size
-        y0 = -1.9 * size - (2 if big else 0)
-        kw = dict(xy=(p["x"], p["y"]), textcoords="offset points", ha="right", va="baseline",
-                  path_effects=HALO, zorder=10, annotation_clip=False)
-        ax.annotate(SHORT[m] if compact else NAME[m], xytext=(x0, y0), fontsize=size * (1.14 if big else 1),
-                    color=DEEP[m], fontweight="semibold" if big else "medium", **kw)
-        ax.annotate(f"A {num(p['y'])}   B {num(p['x'])}", xytext=(x0, y0 - gap), fontsize=size * 0.8,
-                    family=MONO, color=BODY if big else MUTED, **kw)
-        if notes:
-            ax.annotate(note[m], xytext=(x0, y0 - 2.15 * gap), fontsize=size * (1.18 if big else 1.05),
-                        family=SERIF, style="italic", color=ACCENT if big else MUTED, **kw)
-    ax.annotate(start_note, xy=start, xytext=(-0.5 * size, 1.25 * size), textcoords="offset points",
-                ha="left", va="baseline", fontsize=size * 0.82, color=INK, fontweight="medium",
-                path_effects=HALO, zorder=10)
-    ax.annotate("goal", xy=(1, 1), xytext=(0, 1.25 * size), textcoords="offset points", ha="center",
-                va="baseline", fontsize=size * 0.74, family=MONO, color=INK, path_effects=HALO, zorder=10)
-
-
-def region(ax, x, y, text, color, size=10):
-    """A letter-spaced caption in small caps naming a region of the plane."""
-    spaced = "\n".join("\u2009".join(line.upper()) for line in text.split("\n"))
-    ax.text(x, y, spaced, ha="center", va="center", fontsize=size, family=SANS, color=color,
-            fontweight="semibold", linespacing=1.5, zorder=2)
-
-
-def line_label(ax, line, x, text, size=10.5, dy=0.018):
-    """Write text along the trade-off line, rotated to match it on screen."""
-    ax.figure.canvas.draw_idle()
-    p0 = ax.transData.transform((x - 0.05, line(x - 0.05)))
-    p1 = ax.transData.transform((x + 0.05, line(x + 0.05)))
-    ang = np.degrees(np.arctan2(p1[1] - p0[1], p1[0] - p0[0]))
-    ax.text(x, line(x) + dy, text, rotation=ang, rotation_mode="anchor", ha="center", va="bottom",
-            fontsize=size, family=SERIF, style="italic", color=MUTED, zorder=2)
-
+# where each terminal label sits relative to its point, and how each path bends
+LABEL = {"replay_kl": dict(ha="right", va="top", dx=-4, dy=-16),
+         "kl_global": dict(ha="center", va="top", dx=0, dy=-18),
+         "naive": dict(ha="right", va="top", dx=6, dy=-16)}
+BEND = {"replay_kl": -0.05, "kl_global": 0.10, "naive": 0.22}
 
 # ---------------------------------------------------------------- hero
 
 def hero():
-    W, H, L, R = 18, 10, 0.95, 17.05
+    W, H = 16, 8
     S = Sheet(W, H)
-    pts, start = plane_points()
-    ours = "replay_kl"
+    L, CW = 0.8, 5.25            # narrative column (grid columns 1-4)
+    PL, PR, PT, PB = 7.35, 15.3, 0.6, 6.75   # data column (grid columns 5-12)
 
-    S.eyebrow(L, 0.8, "Sequential Books  ·  catastrophic forgetting in sequential LoRA fine-tuning",
-              square=ACCENT)
-    S.eyebrow(R, 0.8, f"{MODEL}  ·  LoRA r=64  ·  {len(SEEDS)} seeds", ha="right")
+    S.text(L, 1.3, "Learn the new book,", size=T_HERO, family=SERIF)
+    S.text(L, 1.97, "keep the old one.", size=T_HERO, family=SERIF)
+    y = S.para(L, 2.75,
+               f"{MODEL} learns book A, then a closely related book B on a fresh LoRA adapter. "
+               "Naive fine-tuning erases A, and a KL penalty on B\u2019s tokens saves A but stalls B. "
+               "Rehearsing A, with KL on the rehearsal tokens only, keeps A and learns most of B.",
+               CW, size=T_PROSE, color=BODY)
 
-    # ---- left column: the claim and the number
-    S.text(L, 1.98, "Learn the new book.", size=66, family=SERIF)
-    S.text(L, 2.95, "Keep the old one.", size=66, family=SERIF, style="italic", color=ACCENT)
-    deck = ["Qwen2.5-7B learns book A, then a closely related",
-            "book B. Naive fine-tuning erases A. A KL penalty on",
-            "B's tokens saves A but stalls B. Rehearsing A, with KL",
-            "on the rehearsal tokens only, keeps both."]
-    for i, line in enumerate(deck):
-        S.text(L, 3.62 + i * 0.31, line, size=13.5, color=BODY)
+    # Distill-style table: exact mean ± sd for the four states
+    ty = y + 0.62
+    cols = [L + 3.0, L + 4.15, L + CW]
+    S.text(L, ty, "STATE", size=T_MONO * 0.9, family=MONO, color=AXIS)
+    for x, h in zip(cols, ["BOOK A", "BOOK B", "FORGET A"]):
+        S.text(x, ty, h, size=T_MONO * 0.9, family=MONO, color=AXIS, ha="right")
+    S.rule(L, L + CW, ty + 0.14, color=INK, lw=1.0)
+    rows = [("Book-A model", ORIGIN_EDGE, f"{num(START_A)}\u00b1{num(START_A_SD)}",
+             f"{num(START_B)}\u00b1{num(START_B_SD)}", "\u2014")]
+    rows += [(NAME[m] if m != "kl_global" else "KL on B tokens", COLOR[m], pm(m, "after_B_A"),
+              pm(m, "after_B_B"), pm(m, "forgetting_A")) for m in ORDER]
+    for i, (nm, c, a, b, f) in enumerate(rows):
+        yy = ty + 0.48 + i * 0.4
+        S.page.scatter([L + 0.07], [yy - 0.065], s=46, color=ORIGIN if i == 0 else c,
+                       edgecolor=ORIGIN_EDGE if i == 0 else "none", lw=1.2)
+        S.text(L + 0.24, yy, nm, size=T_MONO * 1.05, weight="semibold", color=c)
+        for x, v in zip(cols, [a, b, f]):
+            S.text(x, yy, v, size=T_MONO, family=MONO, color=c, ha="right")
+        if i < len(rows) - 1:
+            S.rule(L, L + CW, yy + 0.15, color=GRID)
+    S.rule(L, L + CW, ty + 0.48 + (len(rows) - 1) * 0.4 + 0.15, color=INK, lw=1.0)
+    S.text(L, ty + 0.48 + len(rows) * 0.4 + 0.05,
+           f"Accuracy on 1,500 held-out questions per book. Mean \u00b1 sd, {len(SEEDS)} seeds.",
+           size=T_MONO * 0.85, family=MONO, color=AXIS)
 
-    y0 = 5.2
-    S.eyebrow(L, y0, "Forgetting of book A  ·  rehearsal + KL", color=ACCENT)
-    big = S.text(L - 0.08, y0 + 2.0, num(mu(ours, "forgetting_A")), size=150, family=SERIF, color=ACCENT)
-    bx = L - 0.08 + S.width(big) + 0.22
-    S.text(bx, y0 + 1.42, f"\u00b1 {num(sd(ours, 'forgetting_A'))}", size=17, family=MONO, color=ACCENT)
-    S.text(bx, y0 + 1.74, f"sd over {len(SEEDS)} seeds", size=11.5, color=MUTED)
-    S.text(bx, y0 + 1.98, "below zero: A improved", size=11.5, color=MUTED)
-
-    # forgetting on one scale: three methods, zero marked
-    ax = S.axes(L, y0 + 2.5, 6.2, 1.2)
-    ax.set_xlim(-0.15, 0.74)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-    ax.plot([-0.08, 0.74], [0.62, 0.62], color=HAIR, lw=1.2, solid_capstyle="butt")
-    ax.plot([0, 0], [0.46, 0.78], color=INK, lw=1.0)
-    ax.text(0, 0.86, "0", ha="center", va="bottom", family=MONO, fontsize=9.5, color=INK)
-    for t in (0.2, 0.4):
-        ax.plot([t, t], [0.58, 0.66], color=FAINT, lw=0.9)
-        ax.text(t, 0.86, f"{t:.1f}", ha="center", va="bottom", family=MONO, fontsize=9.5, color=FAINT)
-    ax.text(0.74, 0.86, "more forgetting \u2192", ha="right", va="bottom", family=MONO, fontsize=9.5,
-            color=MUTED)
-    place = {"naive": ("center", 0), "kl_global": ("left", -0.012), "replay_kl": ("right", 0.012)}
+    # the plane
+    ax = S.axes(PL, PT, PR - PL, PB - PT)
+    plane_axes(ax, hi=1.09)
+    # stage 1: base model -> book-A model (quiet, dashed)
+    ax.plot([BASE_B, START_B], [BASE_A, START_A], color=ORIGIN, lw=1.4, ls=(0, (3, 3)), zorder=3)
+    point(ax, BASE_B, BASE_A, "white", s=70, edge=ORIGIN_EDGE, lw=1.4)
+    tag(ax, BASE_B, BASE_A, "Base model", coords(BASE_A, BASE_B), BODY, ha="left", va="bottom",
+        dx=12, dy=4, size=T_LABEL * 0.85)
+    ax.annotate("stage 1 \u00b7 learn book A", ((BASE_B + START_B) / 2, (BASE_A + START_A) / 2),
+                xytext=(7, 0), textcoords="offset points", rotation=90, ha="center", va="top",
+                fontsize=T_MONO * 0.85, family=MONO, color=AXIS,
+                rotation_mode="anchor")
     for m in ORDER:
-        f = mu(m, "forgetting_A")
-        b = m == ours
-        ax.plot([min(0, f), max(0, f)], [0.62, 0.62], color=COLOR[m], lw=5 if b else 3,
-                solid_capstyle="butt", zorder=3)
-        ax.scatter([f], [0.62], s=110 if b else 55, fc=COLOR[m], ec="white", lw=1.6, zorder=4)
-        ha, dx = place[m]
-        ax.text(f + dx, 0.32, num(f), ha=ha, va="top", family=MONO, fontsize=11,
-                color=DEEP[m], fontweight="semibold" if b else "regular")
-        ax.text(f + dx, 0.04, SHORT[m], ha=ha, va="top", fontsize=10, color=DEEP[m],
-                fontweight="semibold" if b else "regular")
+        b, a = mu(m, "after_B_B"), mu(m, "after_B_A")
+        bezier(ax, (START_B, START_A), (b, a), COLOR[m], BEND[m])
+    for m in ORDER:
+        b, a = mu(m, "after_B_B"), mu(m, "after_B_A")
+        halo(ax, b, a, sd(m, "after_B_B"), sd(m, "after_B_A"), COLOR[m])
+        point(ax, b, a, COLOR[m])
+        tag(ax, b, a, NAME[m], coords(a, b), COLOR[m], **LABEL[m])
+    halo(ax, START_B, START_A, START_B_SD, START_A_SD, ORIGIN, alpha=0.25)
+    point(ax, START_B, START_A, ORIGIN, s=190, edge=ORIGIN_EDGE, lw=2.0, z=9)
+    tag(ax, START_B, START_A, "Book-A model \u00b7 every run starts here", coords(START_A, START_B),
+        ORIGIN_EDGE, ha="left", va="bottom", dx=4, dy=22)
 
-    # ---- right: where every run lands
-    px, py, pw, ph = 8.6, 1.5, 8.45, 7.55
-    S.eyebrow(px, 1.22, "Where every run lands after learning book B")
-    S.text(R, 1.22, "dot: mean  \u00b7  rings: seeds  \u00b7  shading: \u00b11 sd", size=9, family=MONO,
-           color=MUTED, ha="right")
-    ax = S.axes(px, py, pw, ph)
-    line = plane(ax, pts, start, base=(BASE_B, BASE_A), s=1.25, tick=10)
-    plane_labels(ax, pts, start, size=14, start_note="book-A model  \u00b7  every run starts here")
-    ax.text(-0.02, 1.06, "\u2191 Book A retained", ha="left", va="top", fontsize=12, color=INK,
-            fontweight="medium", zorder=10)
-    ax.text(1.065, 0.0, "Book B learned \u2192", ha="right", va="bottom", fontsize=12, color=INK,
-            fontweight="medium", zorder=10)
-    line_label(ax, line, 0.66, "the straight line through the two baselines", size=12)
-    region(ax, 0.47, 0.17, "trade one book\nfor the other", MUTED, size=10.5)
-    region(ax, 0.8, 0.7, "keep both", ACCENT, size=10.5)
-    ax.annotate("base model", xy=(BASE_B, BASE_A), xytext=(12, 4), textcoords="offset points",
-                fontsize=11.5, color=INK, fontweight="medium", path_effects=HALO, zorder=10)
-    ax.annotate("knows neither book", xy=(BASE_B, BASE_A), xytext=(12, -12), textcoords="offset points",
-                fontsize=12.5, family=SERIF, style="italic", color=MUTED, zorder=10)
-    mid = (0.5 * (BASE_B + START_B), 0.5 * (BASE_A + START_A))
-    ax.annotate("stage 1: learn book A", xy=mid, xytext=(-8, 0), textcoords="offset points", rotation=90,
-                rotation_mode="anchor", ha="center", va="bottom", fontsize=10, family=MONO, color=MUTED,
-                path_effects=HALO, zorder=10)
-
-    footer(S, 9.66, L, R, extra="   ·   1,500 held-out questions per book   ·   mean \u00b1 1 sd")
+    footer(S, L, PR, 7.62)
     S.save("hero")
 
 
 # ---------------------------------------------------------------- method
 
-SAND = "#d3b98c"        # book B statements
-SAND_DEEP = "#8a6a36"
+def blocks(S, x, y, n, fc, ec, w=0.125, gap=0.035, h=0.36):
+    for i in range(n):
+        S.page.add_patch(Rectangle((x + i * (w + gap), y), w, h, fc=fc, ec=ec, lw=0.9, zorder=3))
+    return x + n * (w + gap) - gap
 
 
-def open_book(S, cx, top, w, h, color, lines=4, lw=1.3):
-    """An open book seen from above, drawn in page inches (y grows downward)."""
-    sag = 0.07
-    for side in (-1, 1):
-        edge = cx + side * w / 2
-        S.page.add_patch(Polygon([(cx, top + sag), (edge, top), (edge, top + h), (cx, top + h + sag)],
-                                 closed=True, fc=tint(color, 0.9), ec=color, lw=lw, joinstyle="round", zorder=4))
-        for k in range(lines):
-            f = (k + 1) / (lines + 1)
-            y_in, y_out = top + sag + f * h * 0.92, top + f * h * 0.92
-            a, b = cx + side * 0.09, edge - side * 0.09
-            S.page.plot([a, b], [y_in - 0.012 * (1 if side else 0), y_out], color=color, lw=0.9, zorder=5,
-                        solid_capstyle="round")
+def bracket(S, x0, x1, y, color, text, size=T_MONO, depth=0.09, lw=1.6):
+    S.page.plot([x0, x0, x1, x1], [y, y + depth, y + depth, y], color=color, lw=lw, zorder=3,
+                solid_joinstyle="miter")
+    S.text((x0 + x1) / 2, y + depth + 0.24, text, size=size, family=MONO, color=color, ha="center")
 
 
-def model_card(S, x, y, w, h, title, sub=None, fc="white", ec=INK, layers=3, frozen=False, tcolor=INK):
-    """A model as a short stack of rounded cards."""
-    for k in reversed(range(layers)):
-        d = 0.07 * k
-        S.box(x + d, y - d, w, h, fc=fc if k == 0 else tint(ec, 0.92), ec=ec, lw=1.1, r=0.08, z=3 + (layers - k) * 0.1)
-    S.text(x + (0.48 if frozen else 0.2), y + h / 2 - (0.08 if sub else 0) + 0.06, title, size=12.5,
-           weight="semibold", color=tcolor, va="baseline", zorder=6)
-    if sub:
-        S.text(x + (0.48 if frozen else 0.2), y + h / 2 + 0.22, sub, size=9, family=MONO, color=MUTED, zorder=6)
-    if frozen:
-        snowflake(S, x + 0.26, y + h / 2, 0.11, ec)
+def card(S, x, y, w, h, title, sub, fc="white", ec=INK, tcolor=INK, lw=1.3):
+    S.box(x, y, w, h, fc=fc, ec=ec, lw=lw, z=2)
+    S.text(x + 0.2, y + 0.4, title, size=T_LABEL, weight="semibold", color=tcolor)
+    S.text(x + 0.2, y + 0.7, sub, size=T_MONO * 0.9, family=MONO, color=BODY)
 
 
-def snowflake(S, cx, cy, r, color, lw=1.2):
-    for k in range(3):
-        a = np.pi / 2 + k * np.pi / 3
-        dx, dy = r * np.cos(a), r * np.sin(a)
-        S.page.plot([cx - dx, cx + dx], [cy - dy, cy + dy], color=color, lw=lw, zorder=7, solid_capstyle="round")
-        for sgn in (-1, 1):
-            tx, ty = cx + sgn * dx * 0.62, cy + sgn * dy * 0.62
-            for t in (a + np.pi / 4 * 3, a - np.pi / 4 * 3):
-                ex, ey = sgn * 0.38 * r * np.cos(t), sgn * 0.38 * r * np.sin(t)
-                S.page.plot([tx, tx + ex], [ty, ty + ey], color=color, lw=lw * 0.8, zorder=7,
-                            solid_capstyle="round")
-
-
-def low_rank(S, x, y, color, size=0.62, thin=0.1, label=None, sub=None):
-    """LoRA as the product of a tall thin and a wide thin matrix."""
-    S.box(x, y, thin, size, fc=color, r=0.02, z=5)
-    S.text(x + thin + 0.07, y + 0.1, "\u00d7", size=10, color=MUTED, va="center")
-    S.box(x + thin + 0.2, y, size, thin, fc=color, r=0.02, z=5)
-    if label:
-        S.text(x, y + size + 0.32, label, size=12, weight="semibold", color=color)
-    if sub:
-        S.text(x, y + size + 0.56, sub, size=9, family=MONO, color=MUTED)
-
-
-def page_arrow(S, a, b, color=INK, lw=1.2, rad=0.0, ls="-", head=(7, 11)):
-    return arrow(S.page, a, b, color=color, lw=lw, rad=-rad, head=head, ls=ls, z=6)
-
-
-def chip(S, x, y, s, fc, color, size=10, family=MONO, weight="medium", ec="none"):
-    t = S.text(x, y, s, size=size, family=family, color=color, weight=weight, va="center", zorder=8)
-    w = S.width(t) * 1.04
-    S.box(x - 0.13, y - 0.155, w + 0.26, 0.31, fc=fc, ec=ec, r=0.155, z=7)
-    return x + w + 0.13
+def page_arrow(S, a, b, color=INK, lw=1.6, rad=0.0, alpha=1.0):
+    S.page.add_patch(FancyArrowPatch(a, b, connectionstyle=f"arc3,rad={rad}",
+                                     arrowstyle="-|>,head_length=0.7,head_width=0.38", color=color,
+                                     lw=lw, alpha=alpha, mutation_scale=12, zorder=4, shrinkA=0, shrinkB=0))
 
 
 def method():
-    W, H, L, R = 18, 10.2, 0.95, 17.05
+    W, H = 16, 8.9
     S = Sheet(W, H)
-    header(S, "Method  \u00b7  two LoRA stages, three stage-2 losses compared",
-           ("Constrain the model ", "only where book A lives."),
-           ["Stage I teaches book A and freezes the result. Stage II trains a fresh adapter on book B, "
-            "rehearses book A, and applies KL to the",
-            "book-A model on the rehearsal tokens alone. Book-B tokens are left free to change."], L, size=40)
-    top, bot = 2.85, 7.6
-    x1, x2 = 5.45, 13.95          # column dividers
-    S.box(x1 + 0.2, top - 0.12, x2 - x1 - 0.4, bot - top + 0.12, fc=tint(ACCENT, 0.965), r=0.14)
-    row = 6.35                    # the model row, shared by stages I and II
+    L, R = 0.8, 15.2
+    header(S, "Constrain the model only where book A lives.",
+           "Stage 1 teaches book A and freezes it. Stage 2 trains a fresh LoRA on book B under one of three "
+           "losses. The three losses differ only in which tokens carry a KL penalty to the frozen book-A model.",
+           L, 11.5)
 
-    def stage(x, numeral, title, sub, color=INK):
-        S.text(x, top + 0.42, numeral, size=34, family=SERIF, color=color)
-        S.text(x + 0.12 + 0.24 * len(numeral), top + 0.2, title, size=13.5, weight="semibold", color=color)
-        S.text(x + 0.12 + 0.24 * len(numeral), top + 0.45, sub, size=10, color=MUTED)
+    BA_FC, BA_EC = "#374151", "#374151"     # book-A rehearsal statements
+    BB_FC, BB_EC = "#F3F4F6", "#9CA3AF"     # book-B statements
+    top = 2.35
+    for x, t in [(L, "STAGE 1 \u00b7 LEARN BOOK A"), (4.95, "STAGE 2 \u00b7 LEARN BOOK B, ONE BATCH DRAWN TO SCALE"),
+                 (12.95, "STAGE 3 \u00b7 EVALUATE")]:
+        S.text(x, top, t, size=T_MONO * 0.95, family=MONO, weight="medium", color=AXIS)
+    S.rule(L, R, top + 0.17, color=INK)
 
-    # ---- stage I: base model + book A -> LoRA A -> merged, frozen book-A model
-    stage(L, "I", "Learn book A", "LoRA on the base model, then merged")
-    model_card(S, L + 0.05, 3.95, 2.05, 0.74, MODEL, sub="base model")
-    open_book(S, L + 1.05, 5.05, 1.75, 0.66, ACCENT)
-    S.text(L + 1.05, 6.08, "Book A", size=12, weight="semibold", color=ACCENT, ha="center")
-    S.text(L + 1.05, 6.32, "300 towns \u00d7 5 facts \u00d7 4", size=9, family=MONO, color=MUTED, ha="center")
-    low_rank(S, L + 2.95, 4.35, ACCENT, size=0.55, thin=0.09)
-    S.text(L + 2.95, 5.22, "LoRA A", size=12, weight="semibold", color=ACCENT)
-    S.text(L + 2.95, 5.45, "r=64 \u00b7 CE", size=9, family=MONO, color=MUTED)
-    page_arrow(S, (L + 2.25, 4.3), (L + 2.85, 4.55), rad=0.0)
-    page_arrow(S, (L + 2.0, 5.4), (L + 2.85, 4.85), rad=0.15)
-    S.box(L + 2.15, row, 2.1, 0.78, fc=PAPER, ec=INK, lw=1.1, r=0.08, z=3)
-    snowflake(S, L + 2.42, row + 0.39, 0.11, INK)
-    S.text(L + 2.65, row + 0.36, "Book-A model", size=12, weight="semibold")
-    S.text(L + 2.65, row + 0.58, "merged \u00b7 frozen", size=9, family=MONO, color=MUTED)
-    page_arrow(S, (L + 3.25, 5.6), (L + 3.25, row - 0.08))
-    S.text(L + 3.38, 5.98, "merge", size=9, family=MONO, color=MUTED)
-    page_arrow(S, (L + 4.3, row + 0.39), (x1 + 0.4, row + 0.39))
+    # stage 1
+    card(S, L, 2.95, 3.45, 0.95, f"{MODEL}", "base model")
+    page_arrow(S, (L + 1.0, 3.9), (L + 1.0, 5.3))
+    S.text(L + 1.2, 4.42, "LoRA A \u00b7 r=64", size=T_MONO, family=MONO, color=INK)
+    S.text(L + 1.2, 4.72, "CE on 6,000 book-A", size=T_MONO * 0.9, family=MONO, color=BODY)
+    S.text(L + 1.2, 4.98, "statements, 4 epochs", size=T_MONO * 0.9, family=MONO, color=BODY)
+    card(S, L, 5.3, 3.45, 0.95, "Book-A model", "LoRA A merged \u00b7 frozen", fc="#F3F4F6", ec=ORIGIN_EDGE)
+    S.para(L, 6.75, "Every stage-2 run starts from this model and uses it as the KL reference "
+           "(the same network with LoRA B switched off).", 3.45, size=T_MONO * 0.95, color=BODY, lh=1.45)
+    S.page.plot([L + 3.45, 4.5], [5.78, 5.78], color=ORIGIN_EDGE, lw=1.6)
+    S.page.plot([4.5, 4.5], [3.45 + 0.63, 6.55 + 0.63], color=ORIGIN_EDGE, lw=1.6, solid_capstyle="butt")
+    for yb in (3.45, 5.0, 6.55):
+        page_arrow(S, (4.5, yb + 0.63), (4.72, yb + 0.63), color=ORIGIN_EDGE)
 
-    # ---- stage II
-    gx = x1 + 0.55
-    stage(gx, "II", "Learn book B, protect book A", "a fresh LoRA B on top of the frozen book-A model", ACCENT)
-    S.eyebrow(gx, 3.95, "Every training batch, drawn to scale", size=8.5)
-    nb, na = 32, 13   # bs and round(replay_ratio * bs), as run
-    cell, pad, split = 0.128, 0.032, 0.14
-    for k in range(nb + na):
-        x = gx + k * (cell + pad) + (split if k >= nb else 0)
-        S.box(x, 4.12, cell, 0.42, fc=SAND if k < nb else ACCENT, r=0.025, z=4)
-    xb_end = gx + nb * (cell + pad) - pad
-    xa = xb_end + pad + split
-    xa_end = xa + na * (cell + pad) - pad
-    for a_, b_, c in ((gx, xb_end, SAND_DEEP), (xa, xa_end, ACCENT)):
-        S.page.plot([a_, a_, b_, b_], [4.62, 4.68, 4.68, 4.62], color=c, lw=1.0, zorder=4)
-    S.text(gx, 4.95, "32 book-B statements", size=11.5, weight="semibold", color=SAND_DEEP)
-    S.text(xa, 4.95, "13 book-A rehearsal", size=11.5, weight="semibold", color=ACCENT)
-    e = chip(S, gx + 0.1, 5.3, "CE", "white", INK, ec=HAIR)
-    S.text(e + 0.2, 5.3, "and nothing else", size=12, family=SERIF, style="italic", color=MUTED, va="center")
-    e = chip(S, xa + 0.1, 5.3, "CE", "white", INK, ec=HAIR)
-    chip(S, e + 0.24, 5.3, "+ KL to book-A model", ACCENT, "white", weight="semibold")
+    # stage 2 legend
+    ly = 2.92
+    S.page.add_patch(Rectangle((4.95, ly - 0.15), 0.15, 0.17, fc=BB_FC, ec=BB_EC, lw=0.9))
+    S.text(5.2, ly, "book-B statement \u00d7 32", size=T_MONO, family=MONO, color=BODY)
+    S.page.add_patch(Rectangle((8.05, ly - 0.15), 0.15, 0.17, fc=BA_FC, ec=BA_EC, lw=0.9))
+    S.text(8.3, ly, "book-A rehearsal statement \u00d7 13", size=T_MONO, family=MONO, color=BODY)
+    S.text(12.55, top, "fresh LoRA B (r=64) is all that trains", size=T_MONO * 0.9, family=MONO,
+           color=AXIS, ha="right")
 
-    # the network that trains: the frozen book-A model plus LoRA B
-    S.box(gx, row, 2.45, 0.78, fc=PAPER, ec=INK, lw=1.1, r=0.08, z=3)
-    snowflake(S, gx + 0.27, row + 0.39, 0.11, INK)
-    S.text(gx + 0.5, row + 0.36, "Book-A model", size=12, weight="semibold")
-    S.text(gx + 0.5, row + 0.58, "frozen", size=9, family=MONO, color=MUTED)
-    S.text(gx + 2.72, row + 0.45, "+", size=18, color=MUTED, va="center")
-    low_rank(S, gx + 3.12, row + 0.1, ACCENT, size=0.55, thin=0.09)
-    S.text(gx + 4.05, row + 0.26, "LoRA B", size=12.5, weight="semibold", color=ACCENT)
-    S.text(gx + 4.05, row + 0.5, "fresh \u00b7 r=64", size=9, family=MONO, color=MUTED)
-    S.text(gx + 4.05, row + 0.74, "the only weights that train", size=10, color=MUTED)
-    page_arrow(S, (gx + 1.25, 5.55), (gx + 1.25, row - 0.08), color=SAND_DEEP)
-    page_arrow(S, (xa + 0.3, 5.55), (gx + 3.55, row - 0.06), color=ACCENT, rad=-0.12)
-    # the KL reference costs no second copy of the weights
-    S.text(xa + 0.62, 5.72, "reference: the same network", size=9.5, color=ACCENT)
-    S.text(xa + 0.62, 5.94, "with LoRA B switched off", size=9.5, color=ACCENT)
+    X0 = 4.95
+    rows = {"naive": 3.45, "kl_global": 5.0, "replay_kl": 6.55}
+    loss = {"naive": "CE(B)", "kl_global": "CE(B) + KL(B)", "replay_kl": "CE(B) + CE(A) + KL(A)"}
+    for m, y in rows.items():
+        c = COLOR[m]
+        S.page.add_patch(Rectangle((X0 - 0.17, y), 0.06, 1.25, fc=c, ec="none"))
+        S.text(X0, y + 0.24, NAME[m], size=T_LABEL, weight="semibold", color=c)
+        S.text(X0 + S.measure(NAME[m], size=T_LABEL, weight="semibold") + 0.18, y + 0.24, m,
+               size=T_MONO * 0.9, family=MONO, color=AXIS)
+        S.text(12.55, y + 0.24, loss[m], size=T_MONO, family=MONO, color=c, ha="right")
+        by = y + 0.45
+        xb = blocks(S, X0, by, 32, BB_FC, BB_EC)
+        if m == "kl_global":
+            bracket(S, X0, xb, by + 0.47, c, "CE + KL to book-A model")
+            S.page.add_patch(Rectangle((X0 - 0.02, by - 0.03), xb - X0 + 0.04, 0.42, fc="none", ec=c, lw=1.8,
+                                       zorder=4))
+        if m == "replay_kl":
+            xa0 = xb + 0.2
+            xa = blocks(S, xa0, by, 13, BA_FC, BA_EC)
+            bracket(S, xa0, xa, by + 0.47, c, "CE + KL to book-A model")
+            S.page.add_patch(Rectangle((xa0 - 0.02, by - 0.03), xa - xa0 + 0.04, 0.42, fc="none", ec=c,
+                                       lw=1.8, zorder=4))
+        if m != "kl_global":
+            bracket(S, X0, xb, by + 0.47, BODY, "CE only, no constraint")
+    # naive/kl rows: show where rehearsal would sit, empty
+    for m in ("naive", "kl_global"):
+        by = rows[m] + 0.45
+        xa0 = X0 + 32 * 0.16 - 0.035 + 0.2
+        S.text(xa0, by + 0.25, "no rehearsal", size=T_MONO * 0.9, family=MONO, color=ORIGIN)
 
-    # ---- stage III
-    ex = x2 + 0.5
-    stage(ex, "III", "Evaluate both books", "an unseen question template")
-    for k, (book, color) in enumerate((("A", ACCENT), ("B", SAND_DEEP))):
-        y = 3.95 + k * 1.3
-        S.box(ex, y, R - ex, 1.1, fc="white", ec=HAIR, lw=1.0, r=0.1, z=2)
-        S.page.add_patch(Circle((ex + 0.32, y + 0.33), 0.14, fc=color, ec="none", zorder=4))
-        S.text(ex + 0.32, y + 0.34, book, size=10, weight="bold", color="white", ha="center", va="center",
-               zorder=5)
-        S.text(ex + 0.58, y + 0.39, f"Book {book}: 1,500 questions", size=11, weight="semibold")
-        S.text(ex + 0.22, y + 0.72, "Question: Who founded the", size=8.6, family=MONO, color=BODY)
-        S.text(ex + 0.22, y + 0.92, "town of X?  Answer:", size=8.6, family=MONO, color=BODY)
-    S.text(ex, 6.98, "greedy, 12 new tokens; correct if", size=10, color=MUTED)
-    S.text(ex, 7.2, "the answer string appears", size=10, color=MUTED)
-    # a bus from the trained model to both question sets
-    bus = ex - 0.25
-    S.page.plot([gx + 6.35, bus, bus], [row + 0.39, row + 0.39, 4.5], color=INK, lw=1.2, zorder=5,
-                solid_joinstyle="round")
-    for yy in (4.5, 5.8):
-        page_arrow(S, (bus, yy), (ex - 0.04, yy))
+    # stage 3
+    for i, (bk, fc, ec) in enumerate([("A", BA_FC, BA_EC), ("B", BB_FC, BB_EC)]):
+        y = 3.0 + i * 1.3
+        S.box(12.95, y, 2.25, 1.05, fc="white", ec=GRID, lw=1.3, z=2)
+        S.page.add_patch(Rectangle((13.12, y + 0.2), 0.15, 0.17, fc=fc, ec=ec, lw=0.9, zorder=3))
+        S.text(13.38, y + 0.36, f"Book {bk}", size=T_LABEL * 0.9, weight="semibold")
+        S.text(13.12, y + 0.72, "1,500 held-out", size=T_MONO * 0.9, family=MONO, color=BODY)
+        S.text(13.12, y + 0.95, "questions", size=T_MONO * 0.9, family=MONO, color=BODY)
+    S.text(12.95, 5.95, "Unseen template:", size=T_MONO * 0.9, color=BODY)
+    S.text(12.95, 6.25, "Question: Who founded", size=T_MONO * 0.85, family=MONO, color=INK)
+    S.text(12.95, 6.48, "the town of X?", size=T_MONO * 0.85, family=MONO, color=INK)
+    S.text(12.95, 6.71, "Answer:", size=T_MONO * 0.85, family=MONO, color=INK)
+    S.para(12.95, 7.15, "Greedy, 12 new tokens; correct if the gold string appears.", 2.25,
+           size=T_MONO * 0.9, color=BODY, lh=1.45)
+    S.vrule(12.75, 2.75, 7.85, color=GRID)
 
-    # ---- the loss, set as an equation with a reading under each term
-    S.rule(L, R, 8.0)
-    y = 8.62
-    x = S.runs(L, y, [("loss", {"color": MUTED, "style": "italic"}), ("  =  ", {"color": MUTED})], size=28,
-               family=SERIF)
-    terms = [
-        ([("CE(book B)", {})], SAND_DEEP, "the new book, unconstrained"),
-        ([("CE(book-A rehearsal)", {})], ACCENT, "a positive target for the old book"),
-        ([("kl_w \u00b7 KL(book-A model ", {}), ("\u2016", {"family": SANS, "size": 22}), (" model)", {})],
-         ACCENT, "on the rehearsal tokens only, kl_w = 1.0"),
-    ]
-    for i, (parts, c, reading) in enumerate(terms):
-        if i:
-            x = S.runs(x, y, [("   +   ", {"color": MUTED})], size=28, family=SERIF)
-        t0 = x
-        x = S.runs(x, y, parts, size=28, family=SERIF, color=c)
-        S.page.plot([t0, t0, x, x], [y + 0.17, y + 0.23, y + 0.23, y + 0.17], color=tint(c, 0.35), lw=1.0)
-        S.text(t0, y + 0.5, reading, size=10.5, color=c)
-    S.runs(L, H - 0.42, [("BASELINES   ", {"color": FAINT}), ("naive = CE(book B)", {"color": BODY}),
-                        ("      KL on new-book tokens = CE(book B) + kl_w \u00b7 KL on those same book-B tokens",
-                         {"color": BODY})], size=9, family=MONO)
-    S.text(R, H - 0.42, "github.com/antonio-mastropaolo/qwen-sequential-books", size=8.6, family=MONO,
-           color=MUTED, ha="right")
+    S.rule(L, R, 8.2, color=GRID)
+    S.text(L, 8.55, "loss  =  CE(book B)  +  CE(book-A rehearsal)  +  kl_w \u00b7 KL(book-A model || model)"
+           "   on rehearsal tokens only,  kl_w = 1.0", size=T_MONO, family=MONO, color=REH)
+    S.text(R, 8.55, "stage-2 loss of rehearsal + KL", size=T_MONO * 0.85, family=MONO, color=AXIS, ha="right")
     S.save("method")
 
 
-# ---------------------------------------------------------------- results
-
-def tradeoff():
-    W, H, L, R = 11, 11.35, 0.8, 10.2
-    S = Sheet(W, H)
-    header(S, "Results  \u00b7  the stability-plasticity trade-off", ("Beyond ", "the trade-off line."),
-           ["Book A retained against book B learned after stage 2. Arrows run from the book-A",
-            "model to each method's mean; the dashed line joins the two baselines."], L, size=38)
-    pts, start = plane_points()
-    ax = S.axes(L + 0.45, 2.85, R - L - 0.45, 7.0)
-    line = plane(ax, pts, start, base=(BASE_B, BASE_A), s=1.0, tick=9.5)
-    plane_labels(ax, pts, start, size=12, start_note="book-A model")
-    ax.text(-0.02, 1.06, "\u2191 Book A retained", ha="left", va="top", fontsize=11, color=INK,
-            fontweight="medium", zorder=10)
-    ax.text(1.065, 0.0, "Book B learned \u2192", ha="right", va="bottom", fontsize=11, color=INK,
-            fontweight="medium", zorder=10)
-    ax.annotate("base model", xy=(BASE_B, BASE_A), xytext=(10, 4), textcoords="offset points",
-                fontsize=10.5, color=INK, fontweight="medium", path_effects=HALO, zorder=10)
-    line_label(ax, line, 0.66, "the straight line through the two baselines", size=11)
-    region(ax, 0.47, 0.17, "trade one book\nfor the other", MUTED, size=9.5)
-    region(ax, 0.8, 0.7, "keep both", ACCENT, size=9.5)
-    footer(S, 10.97, L, R, extra="   \u00b7   mean \u00b1 1 sd", stacked=True)
-    S.save("tradeoff")
-
-
-def per_seed():
-    W, H, L, R = 18, 9.45, 0.95, 17.05
-    S = Sheet(W, H)
-    header(S, "Results  \u00b7  seed by seed", ("The same picture ", "in every seed."),
-           ["One panel per seed: book A retained against book B learned after stage 2, with arrows from "
-            "that seed's book-A model."], L, size=38)
-    n, gap = len(SEEDS), 0.6
-    pw = (R - L - gap * (n - 1)) / n
-    for i, seed in enumerate(SEEDS):
-        pts, start = plane_points(seed)
-        x = L + i * (pw + gap)
-        f = runs_of("replay_kl").forgetting_A[seed]
-        S.text(x, 2.55, f"Seed {seed}", size=19, family=SERIF)
-        S.text(x + pw, 2.55, f"rehearsal + KL forgets {num(f)}", size=9.5, family=MONO, color=ACCENT,
-               ha="right")
-        S.rule(x, x + pw, 2.7, color=INK, lw=0.8)
-        ax = S.axes(x + 0.35, 3.15, pw - 0.35, 4.95)
-        plane(ax, pts, start, s=0.8, tick=8.5, detail=False)
-        plane_labels(ax, pts, start, size=11.5, start_note="book-A model", notes=False, compact=True)
-        ax.text(1.065, 0.0, "B learned \u2192", ha="right", va="bottom", fontsize=9.5, color=INK, zorder=10)
-        ax.text(-0.035, 1.1, "\u2191 A retained", ha="left", va="bottom", fontsize=9.5, color=INK, zorder=10)
-    footer(S, H - 0.38, L, R, extra="   \u00b7   1,500 held-out questions per book")
-    S.save("per_seed")
-
+# ---------------------------------------------------------------- accuracy bars
 
 def accuracy_bars():
-    W, H, L, R = 16, 8.0, 0.95, 15.05
+    W, H = 13, 7.6
     S = Sheet(W, H)
-    header(S, "Results  \u00b7  accuracy after stage 2", ("Only one method ", "keeps both books."),
-           ["Accuracy on 1,500 held-out questions per book after learning book B. Bar: mean of "
-            f"{len(SEEDS)} seeds. Under each bar, a tick per seed and a line for \u00b11 sd.",
-            "The dashed mark is the same model before stage 2: the book-A model."], L, size=40)
-    rows = list(reversed(ORDER))           # rehearsal + KL on top
-    names_w, gutter, val_w = 2.75, 0.45, 0.95
-    col_w = (R - L - names_w - 2 * val_w - gutter) / 2
-    top, row_h = 3.45, 1.0
-    S.box(L - 0.25, top + 0.02, R - L + 0.5, row_h - 0.04, fc=tint(ACCENT, 0.94), r=0.1)
-    cols = [("Book A retained", "after_B_A", START_A), ("Book B learned", "after_B_B", START_B)]
-    for j, (title, col, before) in enumerate(cols):
-        x0 = L + names_w + j * (col_w + val_w + gutter)
-        S.text(x0, top - 0.25, title, size=13, weight="semibold")
-        S.text(x0 + col_w, top - 0.25, "higher is better \u2192", size=9, family=MONO, color=FAINT, ha="right")
-        ax = S.axes(x0, top, col_w, row_h * len(rows))
-        ax.set_xlim(0, 1)
-        ax.set_ylim(len(rows) - 0.5, -0.5)
-        ax.axis("off")
-        for t in (0.25, 0.5, 0.75):
-            ax.plot([t, t], [-0.5, len(rows) - 0.5], color=HAIR, lw=0.9, zorder=0)
-        for i, m in enumerate(rows):
-            b = m == "replay_kl"
-            r = runs_of(m)
+    L, R = 0.8, 12.2
+    header(S, "Rehearsal + KL keeps book A and learns most of book B.",
+           "Accuracy after stage 2. Solid bars are book A (retained), light bars book B (learned). "
+           "Whiskers are \u00b11 sd; short dashes mark the book-A model before stage 2.", L, 11.2)
+    ax = S.axes(1.55, 2.25, 10.6, 4.1)
+    ax.set_xlim(-0.55, len(ORDER) - 0.45)
+    ax.set_ylim(0, 1.16)
+    yt = np.round(np.arange(0, 1.01, 0.2), 1)
+    for t in np.round(np.arange(0, 1.01, 0.1), 1):
+        ax.axhline(t, color=GRID, lw=1.0, zorder=0)
+    ax.set_yticks(yt, [f"{t:.1f}" for t in yt], family=SANS, fontweight="medium", fontsize=T_AXIS * 0.85)
+    ax.set_xticks([])
+    for s in ax.spines.values():
+        s.set_visible(False)
+    ax.set_ylabel("ACCURACY AFTER STAGE 2", family=SANS, fontweight="medium", fontsize=T_AXIS, labelpad=12)
+    bw, off = 0.3, 0.17
+    for i, m in enumerate(ORDER):
+        c = COLOR[m]
+        for j, (col, ref, book) in enumerate([("after_B_A", START_A, "A"), ("after_B_B", START_B, "B")]):
+            x = i + (-off if j == 0 else off)
             v, e = mu(m, col), sd(m, col)
-            ax.add_patch(Rectangle((0, i - 0.17), 1, 0.3, fc="white" if b else PAPER, ec="none", zorder=1))
-            ax.add_patch(Rectangle((0, i - 0.17), v, 0.3, fc=COLOR[m], ec="none", zorder=2))
-            ax.plot([v - e, v + e], [i + 0.25, i + 0.25], color=DEEP[m], lw=1.1, zorder=3, solid_capstyle="butt")
-            for sv in r[col].values:
-                ax.plot([sv, sv], [i + 0.19, i + 0.31], color=DEEP[m], lw=1.1, zorder=3, solid_capstyle="butt")
-            S.text(x0 + col_w + 0.14, top + (i + 0.5) * row_h - 0.03, num(v), size=15 if b else 13.5,
-                   family=MONO, color=DEEP[m], weight="semibold" if b else "regular", va="center")
-        ax.plot([before, before], [-0.42, len(rows) - 0.5], color=INK, lw=1.0, ls=(0, (2, 2.2)), zorder=6)
-        S.text(x0 + before * col_w + (-0.08 if j == 0 else 0.08), top + row_h * len(rows) + 0.3,
-               f"before stage 2: {num(before)}", size=9.5, family=MONO, color=INK, ha="right" if j == 0 else "left")
-        for t in (0, 0.25, 0.5, 0.75, 1.0):
-                    S.text(x0 + t * col_w, top + row_h * len(rows) + 0.62, frac_ticks([t])[0], size=9,
-                   family=MONO, color=FAINT, ha="center")
-    for i, m in enumerate(rows):
-        b = m == "replay_kl"
-        S.text(L, top + (i + 0.5) * row_h - 0.03, NAME[m], size=13.5 if b else 12.5, color=DEEP[m],
-               weight="semibold" if b else "medium", va="center")
-    footer(S, H - 0.38, L, R, extra="   \u00b7   mean \u00b1 1 sd")
+            ax.bar(x, v, bw, color=c if j == 0 else tint(c, 0.72), ec=c, lw=0 if j == 0 else 1.6, zorder=2)
+            ax.errorbar(x, v, yerr=e, color=INK, lw=1.4, capsize=6, capthick=1.4, zorder=4)
+            ax.plot([x - bw / 2 - 0.03, x + bw / 2 + 0.03], [ref, ref], color=ORIGIN_EDGE, lw=1.4,
+                    ls=(0, (2.5, 2)), zorder=5)
+            top = v + e
+            if top < ref < top + 0.13:
+                top = ref
+            ax.annotate(f"{num(v)}", (x, top), xytext=(0, 9), textcoords="offset points", ha="center",
+                        family=MONO, fontsize=T_MONO, color=c if j == 0 else INK, zorder=6,
+                        fontweight="medium")
+            ax.annotate(f"\u00b1{num(e)}", (x, top), xytext=(0, 9 + T_MONO * 1.25), textcoords="offset points",
+                        ha="center", family=MONO, fontsize=T_MONO * 0.85, color=AXIS, zorder=6)
+            ax.annotate(f"Book {book}", (x, 0), xytext=(0, -20), textcoords="offset points", ha="center",
+                        family=SANS, fontweight="medium", fontsize=T_AXIS * 0.85, color=AXIS,
+                        annotation_clip=False)
+        ax.annotate(NAME[m], (i, 0), xytext=(0, -46), textcoords="offset points", ha="center", family=SANS,
+                    fontweight="semibold", fontsize=T_LABEL, color=c, annotation_clip=False)
+    S.text(R, 2.05, f"- -  book-A model:  A {num(START_A)}   B {num(START_B)}", size=T_MONO * 0.9,
+           family=MONO, color=ORIGIN_EDGE, ha="right")
+    footer(S, L, R, 7.3)
     S.save("accuracy_bars")
 
 
-def forgetting():
-    W, H, L, R = 16, 8.15, 0.95, 15.05
-    S = Sheet(W, H)
-    header(S, "Results  \u00b7  forgetting of book A", ("Book A, stage by stage. ", "One method holds it."),
-           ["Book-A accuracy of the base model, after stage 1 (book A) and after stage 2 (book B), mean of "
-            f"{len(SEEDS)} seeds, thin lines",
-            "per seed. Right: forgetting of A, the stage-1 score minus the stage-2 score. Below zero means book A improved."],
-           L, size=40)
-    # left: slope chart
-    ax = S.axes(L + 0.45, 3.35, 5.5, 3.6)
-    quiet_axes(ax, (-0.12, 2.12), (-0.04, 1.08), [0, 1, 2], [0, 0.25, 0.5, 0.75, 1], size=9.5)
-    ax.set_xticklabels(["base model", "after book A", "after book B"], family=SANS, fontsize=11)
-    ax.add_patch(Rectangle((1, -0.04), 1.12, 1.12, fc=PAPER, ec="none", zorder=0.1))
-    ax.text(1.06, 1.05, "STAGE 2", family=MONO, fontsize=9, color=MUTED, va="top", fontweight="medium")
-    ax.plot([0, 1], [BASE_A, START_A], color=INK, lw=2.0, zorder=3, solid_capstyle="round")
-    for m in ORDER:  # each seed, faintly, under its mean
-        r = runs_of(m)
-        for seed in SEEDS:
-            ax.plot([1, 2], [r.after_A_A[seed], r.after_B_A[seed]], color=tint(COLOR[m], 0.6), lw=0.9,
-                    zorder=2, solid_capstyle="round")
-    ax.errorbar([1], [START_A], yerr=[START_A_SD], fmt="none", ecolor=FAINT, elinewidth=1.2, zorder=2)
-    for m in ORDER:
-        b = m == "replay_kl"
-        v, e = mu(m, "after_B_A"), sd(m, "after_B_A")
-        ax.plot([1, 2], [START_A, v], color=COLOR[m], lw=3.2 if b else 1.8, zorder=4 if b else 3,
-                solid_capstyle="round")
-        ax.scatter([2], [v], s=80 if b else 45, fc=COLOR[m], ec="white", lw=1.5, zorder=5)
-    ax.scatter([0, 1], [BASE_A, START_A], s=45, fc="white", ec=INK, lw=1.4, zorder=6)
-    ax.annotate(num(BASE_A), xy=(0, BASE_A), xytext=(10, -3), textcoords="offset points", ha="left",
-                va="center", family=MONO, fontsize=10, color=INK)
-    ax.annotate(num(START_A), xy=(1, START_A), xytext=(-12, 6), textcoords="offset points", ha="right",
-                family=MONO, fontsize=10, color=INK, path_effects=HALO)
-    for m in ORDER:
-        b = m == "replay_kl"
-        v = mu(m, "after_B_A")
-        ax.annotate(f"{num(v)}  {SHORT[m]}", xy=(2, v), xytext=(12, -4 if m == "kl_global" else (4 if b else 0)),
-                    textcoords="offset points", ha="left", va="center", family=MONO, fontsize=10.5,
-                    color=DEEP[m], fontweight="semibold" if b else "regular", annotation_clip=False)
-    S.text(L, 3.1, "\u2191 Book-A accuracy", size=11, weight="medium")
+# ---------------------------------------------------------------- forgetting (forest plot)
 
-    # right: forgetting per seed, one row per method
-    x0, w, y0, h = 10.55, R - 10.55 - 1.05, 3.35, 3.6
-    S.text(L + 8.15, 3.1, "Forgetting of book A, each seed", size=11, weight="medium")
-    ax = S.axes(x0, y0, w, h)
-    ax.set_xlim(-0.08, 0.72)
-    rows = list(reversed(ORDER))
-    ax.set_ylim(len(rows) - 0.5, -0.5)
-    ax.axis("off")
-    for t in (0.2, 0.4, 0.6):
-        ax.plot([t, t], [-0.5, len(rows) - 0.5], color=HAIR, lw=0.9, zorder=0)
-        ax.text(t, len(rows) - 0.4, f"{t:.1f}", ha="center", va="top", family=MONO, fontsize=9, color=FAINT)
-    ax.plot([0, 0], [-0.5, len(rows) - 0.5], color=INK, lw=1.0, zorder=1)
-    ax.text(0, len(rows) - 0.4, "0", ha="center", va="top", family=MONO, fontsize=9, color=INK)
-    S.text(x0 + w, 3.1, "more forgetting \u2192", size=9, family=MONO, color=MUTED, ha="right")
+def forgetting():
+    W, H = 13, 6.2
+    S = Sheet(W, H)
+    L, R = 0.8, 12.2
+    header(S, "Rehearsal + KL sits at zero: no measurable forgetting of book A.",
+           "Forgetting of book A = accuracy after stage 1 \u2212 accuracy after stage 2. "
+           "Dot: mean; bar: \u00b11 sd; open circles below: the individual seeds.", L, 11.2)
+    AX0, AX1 = 3.7, 9.9
+    top, rowh = 2.45, 0.78
+    ax = S.axes(AX0, top - 0.35, AX1 - AX0, rowh * len(ORDER) + 0.35)
+    lo, hi = -0.1, 0.75
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(len(ORDER) - 0.5 + 0.45, -0.5)
+    xt = np.round(np.arange(-0.1, 0.71, 0.1), 1)
+    for t in xt:
+        ax.axvline(t, color=GRID, lw=1.0, zorder=0)
+    ax.axvline(0, color=ORIGIN_EDGE, lw=1.6, ls=(0, (4, 3)), zorder=1)
+    ax.set_xticks(xt, [num(t, 1) if t else "0" for t in xt], family=SANS, fontweight="medium",
+                  fontsize=T_AXIS * 0.85)
+    ax.set_yticks([])
+    for s in ax.spines.values():
+        s.set_visible(False)
+    ax.set_xlabel("FORGETTING OF BOOK A", family=SANS, fontweight="medium", fontsize=T_AXIS, labelpad=12)
+    rows = sorted(ORDER, key=lambda m: -mu(m, "forgetting_A"))
+    S.text(L, top - 0.2, "METHOD", size=T_MONO * 0.9, family=MONO, color=AXIS)
+    S.text(R, top - 0.2, "MEAN \u00b1 SD", size=T_MONO * 0.9, family=MONO, color=AXIS, ha="right")
     for i, m in enumerate(rows):
-        b = m == "replay_kl"
-        r = runs_of(m).forgetting_A
-        v, e = mu(m, "forgetting_A"), sd(m, "forgetting_A")
-        ax.plot([v - e, v + e], [i, i], color=tint(COLOR[m], 0.55), lw=9, solid_capstyle="round", zorder=2)
-        ax.scatter(r.values, [i] * len(r), s=44 if b else 34, fc="white", ec=COLOR[m], lw=1.4, zorder=3)
-        ax.plot([v, v], [i - 0.17, i + 0.17], color=DEEP[m], lw=2, zorder=4, solid_capstyle="butt")
-        cy = y0 + h * (i + 0.5) / len(rows)
-        S.text(L + 8.15, cy, SHORT[m], size=11.5, color=DEEP[m], weight="semibold" if b else "regular",
-               va="center")
-        S.text(R, cy, num(v), size=13 if b else 12, family=MONO, color=DEEP[m],
-               weight="semibold" if b else "regular", va="center", ha="right")
-    S.text(R, 3.1, "mean", size=9, family=MONO, color=MUTED, ha="right")
-    footer(S, H - 0.35, L, R, extra="   \u00b7   mean \u00b1 1 sd")
+        c, v, e = COLOR[m], mu(m, "forgetting_A"), sd(m, "forgetting_A")
+        ax.plot([v - e, v + e], [i, i], color=c, lw=3.2, solid_capstyle="round", zorder=3)
+        seeds = df[df.method == m].forgetting_A.values
+        ax.scatter(seeds, [i + 0.27] * len(seeds), s=40, fc="white", ec=c, lw=1.4, zorder=4)
+        ax.scatter([v], [i], s=190, color=c, ec="white", lw=2, zorder=5)
+        yy = top + i * rowh + 0.1
+        S.text(L, yy, NAME[m], size=T_LABEL, weight="semibold", color=c)
+        S.text(R, yy, f"{num(v)} \u00b1 {num(e)}", size=T_MONO * 1.1, family=MONO, color=c, ha="right")
+    ax.annotate("\u2190 book A improved", (0, len(ORDER) - 0.5 + 0.3), xytext=(-8, 0),
+                textcoords="offset points", ha="right", va="center", family=SANS, fontsize=T_MONO, color=BODY)
+    ax.annotate("book A forgotten \u2192", (0, len(ORDER) - 0.5 + 0.3), xytext=(8, 0),
+                textcoords="offset points", ha="left", va="center", family=SANS, fontsize=T_MONO, color=BODY)
+    footer(S, L, R, 5.9)
     S.save("forgetting")
+
+
+# ---------------------------------------------------------------- tradeoff deep dive
+
+def tradeoff():
+    W, H = 16, 8.6
+    S = Sheet(W, H)
+    L, R = 0.8, 15.2
+    header(S, "Where every run goes, checkpoint by checkpoint.",
+           "Each run is measured at three checkpoints: the base model, after book A, after book B. Thin paths "
+           "are the nine individual runs; bold dots are method means with a \u00b11 sd halo.", L, 14.2)
+    ax = S.axes(1.65, 2.3, 6.4, 5.15)
+    plane_axes(ax, hi=1.1)
+    for seed in SEEDS:
+        s1 = stage1.loc[seed]
+        ax.plot([s1.base_B, s1.after_A_B], [s1.base_A, s1.after_A_A], color=ORIGIN, lw=1.0,
+                ls=(0, (3, 3)), zorder=2)
+        for m in ORDER:
+            r = run(m, seed)
+            bezier(ax, (r.after_A_B, r.after_A_A), (r.after_B_B, r.after_B_A), COLOR[m], BEND[m], lw=1.3,
+                   alpha=0.45, shrink=(3, 4), head=0.7, z=3)
+            ax.scatter([r.after_B_B], [r.after_B_A], s=30, fc="white", ec=COLOR[m], lw=1.2, zorder=7)
+        ax.scatter([s1.after_A_B], [s1.after_A_A], s=30, fc="white", ec=ORIGIN_EDGE, lw=1.2, zorder=7)
+    for m in ORDER:
+        b, a = mu(m, "after_B_B"), mu(m, "after_B_A")
+        halo(ax, b, a, sd(m, "after_B_B"), sd(m, "after_B_A"), COLOR[m])
+        point(ax, b, a, COLOR[m], s=120)
+        tag(ax, b, a, NAME[m], coords(a, b), COLOR[m], size=T_LABEL * 0.85, mono=T_MONO * 0.9, **LABEL[m])
+    point(ax, START_B, START_A, ORIGIN, s=140, edge=ORIGIN_EDGE, lw=1.8, z=9)
+    tag(ax, START_B, START_A, "Book-A model (mean of 3 seeds)", coords(START_A, START_B), ORIGIN_EDGE,
+        ha="left", va="bottom", dx=2, dy=24, size=T_LABEL * 0.85, mono=T_MONO * 0.9)
+    point(ax, BASE_B, BASE_A, "white", s=50, edge=ORIGIN_EDGE, lw=1.2)
+    tag(ax, BASE_B, BASE_A, "Base model", coords(BASE_A, BASE_B), BODY, ha="left", va="bottom", dx=10,
+        dy=4, size=T_LABEL * 0.8, mono=T_MONO * 0.85)
+
+    # right: the same runs as slopes across the three checkpoints
+    stages = ["base", "after A", "after B"]
+    for k, (book, cols) in enumerate([("BOOK A ACCURACY", ["base_A", "after_A_A", "after_B_A"]),
+                                     ("BOOK B ACCURACY", ["base_B", "after_A_B", "after_B_B"])]):
+        x0 = 9.35 + k * 3.05
+        a2 = S.axes(x0, 2.3, 2.45, 5.15)
+        a2.set_xlim(-0.25, 2.25 + 0.95)
+        a2.set_ylim(-0.03, 1.03)
+        for t in np.round(np.arange(0, 1.01, 0.1), 1):
+            a2.axhline(t, color=GRID, lw=1.0, zorder=0)
+        for t in range(3):
+            a2.axvline(t, color=GRID, lw=1.0, zorder=0)
+        yt = np.round(np.arange(0, 1.01, 0.2), 1)
+        a2.set_yticks(yt, [f"{t:.1f}" for t in yt] if k == 0 else [], family=SANS, fontweight="medium",
+                      fontsize=T_AXIS * 0.85)
+        a2.set_xticks(range(3), stages, family=SANS, fontweight="medium", fontsize=T_AXIS * 0.8)
+        for s in a2.spines.values():
+            s.set_visible(False)
+        a2.set_title(book, family=SANS, fontweight="medium", fontsize=T_AXIS, color=AXIS, loc="left", pad=14)
+        for m in ORDER:
+            sub = df[df.method == m]
+            for _, r in sub.iterrows():
+                a2.plot([0, 1], [r[c] for c in cols[:2]], color=ORIGIN, lw=0.8, alpha=0.5, zorder=2)
+                a2.plot([1, 2], [r[c] for c in cols[1:]], color=COLOR[m], lw=0.9, alpha=0.4, zorder=2)
+            means = [sub[c].mean() for c in cols]
+            a2.plot([0, 1], means[:2], color=ORIGIN, lw=2.2, zorder=3)
+            a2.plot([1, 2], means[1:], color=COLOR[m], lw=2.6, zorder=4, solid_capstyle="round")
+            a2.scatter([2], [means[2]], s=60, color=COLOR[m], ec="white", lw=1.5, zorder=5)
+        a2.scatter([0, 1], [df[cols[0]].mean(), stage1[cols[1]].mean()], s=60, color=ORIGIN, ec=ORIGIN_EDGE,
+                   lw=1.2, zorder=5)
+        # end labels, nudged apart so they never collide
+        ends = sorted([(mu(m, cols[2]), m) for m in ORDER])
+        ys, last = [], -1
+        for v, m in ends:
+            y = max(v, last + 0.075)
+            ys.append((y, v, m))
+            last = y
+        for y, v, m in ys:
+            a2.annotate(num(v), (2, v), xytext=(2.18, y), textcoords="data", va="center", ha="left",
+                        family=MONO, fontsize=T_MONO, color=COLOR[m], annotation_clip=False)
+    footer(S, L, R, 8.3)
+    S.save("tradeoff")
+
+
+# ---------------------------------------------------------------- per seed
+
+def per_seed():
+    W, H = 16, 8.3
+    S = Sheet(W, H)
+    L, R = 0.8, 15.2
+    header(S, "The same picture in every seed.",
+           "One plane per seed: book A retained against book B learned, each path starting from that seed\u2019s "
+           "book-A model. The rehearsal + KL result is not one lucky initialization.", L, 14.2)
+    pw, gap = 4.2, 0.8
+    for k, seed in enumerate(SEEDS):
+        x0 = 1.55 + k * (pw + gap)
+        ax = S.axes(x0, 2.55, pw, 3.6)
+        plane_axes(ax, size=T_AXIS * 0.8, label_every=0.5, titles=(k == 0),
+                   xt="BOOK B  \u2192", yt="BOOK A  \u2192")
+        if k > 0:
+            ax.set_xlabel("BOOK B  \u2192", family=SANS, fontweight="medium", fontsize=T_AXIS * 0.8, color=AXIS,
+                          labelpad=12)
+        s1 = stage1.loc[seed]
+        for m in ORDER:
+            r = run(m, seed)
+            bezier(ax, (s1.after_A_B, s1.after_A_A), (r.after_B_B, r.after_B_A), COLOR[m], BEND[m], lw=3.5 * PX,
+                   shrink=(6, 8), head=0.8)
+            point(ax, r.after_B_B, r.after_B_A, COLOR[m], s=80, lw=1.5)
+        point(ax, s1.after_A_B, s1.after_A_A, ORIGIN, s=90, edge=ORIGIN_EDGE, lw=1.5, z=9)
+        rk = run("replay_kl", seed)
+        S.text(x0, 2.3, f"SEED {seed}", size=T_MONO, family=MONO, weight="semibold", color=INK)
+        # per-seed table under each plane
+        ty = 7.0
+        S.text(x0 + pw, 2.3, f"book-A model  A {num(s1.after_A_A)}", size=T_MONO * 0.85, family=MONO,
+               color=ORIGIN_EDGE, ha="right")
+        for i, m in enumerate(ORDER):
+            r = run(m, seed)
+            yy = ty + i * 0.27
+            S.text(x0, yy, NAME[m], size=T_MONO * 0.95, weight="semibold", color=COLOR[m])
+            S.text(x0 + pw, yy, f"A {num(r.after_B_A)}  B {num(r.after_B_B)}  forget {num(r.forgetting_A, sign=True)}",
+                   size=T_MONO * 0.85, family=MONO, color=COLOR[m], ha="right")
+        del rk
+    footer(S, L, R, 8.05, note="one run per method per seed")
+    S.save("per_seed")
 
 
 # ---------------------------------------------------------------- main

@@ -10,7 +10,7 @@
 [![PEFT](https://img.shields.io/badge/PEFT-LoRA%20r%3D64-2f4b6e)](https://github.com/huggingface/peft)
 [![License: MIT](https://img.shields.io/badge/license-MIT-5f6b7a)](LICENSE)
 
-<img src="assets/hero.png" alt="Book-A accuracy across stages, and book A vs book B accuracy after stage 2, for three methods" width="100%">
+<img src="assets/hero.png" alt="Left: book-A accuracy across stages for three methods. Right: book A retained versus book B learned after stage 2; rehearsal + KL sits off the naive-KL trade-off line, near the goal corner" width="100%">
 
 </div>
 
@@ -74,7 +74,7 @@ loss =          CE( book-B statements )             # new knowledge, no constrai
 The KL reference is the book-A model itself, obtained by disabling the stage-2 adapter, so it needs no second
 copy of the weights. `kl_w = 1.0`. **No KL is applied to book-B tokens.**
 
-<p align="center"><img src="assets/method.png" alt="Two-stage pipeline: base model, LoRA A on book A, then a fresh LoRA B with a rehearsal batch and KL on the rehearsal examples" width="100%"></p>
+<p align="center"><img src="assets/method.png" alt="Two-stage pipeline: base model and book A train LoRA A into a frozen book-A model; stage 2 trains a fresh LoRA B on batches of book-B statements (CE) and book-A rehearsal statements (CE + KL to the book-A model), then evaluates" width="100%"></p>
 
 ### Methods compared
 
@@ -104,7 +104,7 @@ All three share the same stage-1 model per seed, the same fresh-LoRA setup, lear
 
 ## Results
 
-<p align="center"><img src="assets/accuracy_bars.png" alt="Accuracy on book A and book B after stage 2, per method, with error bars" width="85%"></p>
+<p align="center"><img src="assets/accuracy_bars.png" alt="Book A retained and book B learned after stage 2, per method, with per-seed dots and sd" width="85%"></p>
 
 | Method | Seeds | A after stage 1 | A after stage 2 | B after stage 2 | Forgetting of A |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -117,8 +117,8 @@ Mean ± sd over seeds (sample sd). Source: [`results/summary.md`](results/summar
 
 <table>
 <tr>
-<td width="50%"><img src="assets/forgetting.png" alt="Forgetting of book A per method with per-seed markers"></td>
-<td width="50%"><img src="assets/tradeoff.png" alt="Scatter of book A retained versus book B learned, per seed and mean"></td>
+<td width="50%"><img src="assets/forgetting.png" alt="Book-A accuracy before and after stage 2 for each method, with forgetting and per-seed dots"></td>
+<td width="50%"><img src="assets/tradeoff.png" alt="Book A retained versus book B learned after stage 2: mean, seeds and sd ellipse per method"></td>
 </tr>
 </table>
 
@@ -134,7 +134,7 @@ book-A model, while book-B tokens get no penalty.
 
 ### Per-seed results
 
-<p align="center"><img src="assets/per_seed.png" alt="Per-seed values of book A, book B and forgetting for each method" width="100%"></p>
+<p align="center"><img src="assets/per_seed.png" alt="One panel per seed: arrows from the book-A model to each method after stage 2, with per-seed values" width="100%"></p>
 
 | Method | Seed | A after stage 1 | A after stage 2 | B after stage 2 | Forgetting of A | Stage-2 time (min) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -259,7 +259,7 @@ Main flags of `sequential_books.py`: `--model`, `--tiny`, `--methods` (comma lis
 ├── assets/
 │   ├── make_figures.py     # builds every README figure from results/results.csv
 │   ├── hero.png  accuracy_bars.png  forgetting.png  tradeoff.png  per_seed.png
-│   └── method.png  method.svg
+│   └── method.png  (every figure also as .svg)
 ├── CITATION.cff
 └── LICENSE
 ```
